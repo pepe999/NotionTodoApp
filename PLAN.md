@@ -96,7 +96,7 @@
 - **Vstup**: Monorepo struktura, Docker soubory
 - **Výstup**: `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.github/workflows/ios-ci.yml` (disabled by default)
 - **Testy/Revize**: Push PR spustí CI (lint + test + build pro api a web); merge do main spustí deploy workflow
-- **Claude Code zadání**: `Vytvoř GitHub Actions ci.yml: spustí se na PR do main/develop, kroky: gitleaks secret scan, checkout, setup Node 20, npm ci, npm run lint, npm audit --audit-level=moderate, npm run test, npm run build. Vytvoř deploy.yml: spustí se na push do main, build Docker images, push na GHCR, SSH deploy na VPS přes appleboy/ssh-action s rollback krokem. Vytvoř ios-ci.yml s workflow_dispatch triggerem (manuální spuštění): macos-latest runner, xcodebuild test.`
+- **Claude Code zadání**: `Vytvoř GitHub Actions ci.yml: spustí se na PR do main/develop, kroky: gitleaks secret scan, checkout, setup Node 20, npm ci, npm run lint, npm audit --audit-level=high (CI selhává pouze na high/critical zranitelnostech – moderate se řeší v Dependabot PR, ne při každém buildu), npm run test, npm run build. Vytvoř deploy.yml: spustí se na push do main, build Docker images, push na GHCR, SSH deploy na VPS přes appleboy/ssh-action s rollback krokem. Vytvoř ios-ci.yml s workflow_dispatch triggerem (manuální spuštění): macos-latest runner, xcodebuild test.`
 - **Technologie/nástroje**: GitHub Actions, GHCR, appleboy/ssh-action
 
 ---
@@ -152,10 +152,12 @@
      - `VPS_HOST` = IP adresa VPS
      - `VPS_USER` = `deploy`
      - `VPS_SSH_KEY` = obsah `~/.ssh/github_deploy` (private key)
-     - `GOOGLE_CLIENT_ID` = z Google Cloud Console (viz 1.3)
-     - `GOOGLE_CLIENT_SECRET` = z Google Cloud Console
+     - `GOOGLE_CLIENT_ID` = z Google Cloud Console – Web client (viz 1.3)
+     - `GOOGLE_CLIENT_SECRET` = z Google Cloud Console – Web client
+     - `GOOGLE_CLIENT_ID_IOS` = z Google Cloud Console – iOS client (viz 5.3)
      - `JWT_SECRET` = náhodný string: `openssl rand -base64 64`
-     - `NOTION_ENCRYPTION_KEY` = náhodný 32B klíč: `openssl rand -hex 32`
+     - `NOTION_ENCRYPTION_KEY` = náhodný 32B klíč: `openssl rand -hex 32` (výstup je 64 hex znaků = 32 bajtů; backend ověří délku při startu)
+     - `BACKUP_ENCRYPTION_KEY` = zálohovací heslo: `openssl rand -base64 32`
      - `GHCR_TOKEN` = GitHub Personal Access Token s `write:packages`
      - `DOMAIN` = tvoje doména (např. `notionapp.example.com`)
 
@@ -170,7 +172,7 @@
 - **Vstup**: Monorepo z 0.2
 - **Výstup**: Funkční Fastify server na :3000, ESLint + Prettier integrace, Husky pre-commit lint, validace env vars
 - **Testy/Revize**: `npm run dev` spustí server; bez potřebných env vars server odmítne nastartovat s popisnou chybou; `npm run lint` projde bez chyb
-- **Claude Code zadání**: `V packages/api nastav Fastify 5 projekt: package.json (fastify@5, @fastify/cors, @fastify/cookie, @fastify/helmet, @fastify/rate-limit, @fastify/swagger, @fastify/swagger-ui, fastify-plugin, zod, better-sqlite3, pino), tsconfig.json extendující base, src/env.ts (Zod validace všech env proměnných při startu – process.exit(1) při chybějící proměnné), src/server.ts (Fastify instance, globální setErrorHandler vracející sanitizované JSON chyby bez stack trace v produkci, Pino s redact: ["req.headers.authorization", "body.token", "body.integration_token"], registrace pluginů), src/index.ts. Přidej tsx pro dev, tsup pro build.`
+- **Claude Code zadání**: `V packages/api nastav Fastify 5 projekt: package.json (fastify@5, @fastify/cors, @fastify/cookie, @fastify/helmet, @fastify/rate-limit, @fastify/swagger, @fastify/swagger-ui, fastify-plugin, zod, better-sqlite3, pino), tsconfig.json extendující base, src/env.ts (Zod validace všech env proměnných při startu – process.exit(1) při chybějící proměnné), src/server.ts (Fastify instance s trustProxy: 1 pro správné X-Forwarded-For za Traefikem, globální setErrorHandler vracející sanitizované JSON chyby bez stack trace v produkci, Pino s redact: ["req.headers.authorization", "body.token", "body.integration_token"], registrace pluginů), src/index.ts. @fastify/swagger-ui registruj podmíněně pouze v NODE_ENV !== "production". Přidej tsx pro dev, tsup pro build.`
 - **Technologie/nástroje**: Fastify 5.x, tsx, tsup, Husky 9.x, lint-staged, Zod (env validace)
 
 ---
@@ -182,7 +184,7 @@
 - **Vstup**: Backend projekt z 1.1
 - **Výstup**: `src/db/index.ts`, `src/db/migrations/001_init.sql`, migrace runner, inicializační skript
 - **Testy/Revize**: `npm run db:migrate` vytvoří SQLite soubor se správnými tabulkami; spuštění znovu je idempotentní
-- **Claude Code zadání**: `Vytvoř src/db/index.ts (inicializace better-sqlite3, WAL mode, foreign keys ON, připojení k souboru z DATABASE_PATH env). Vytvoř src/db/migrations/ runner: čte všechny *.sql soubory seřazené dle čísla, ukládá provedené migrace do schema_migrations tabulky, přeskočí již provedené. Migrace 001_init.sql: tabulky users (id TEXT PK, google_id TEXT UNIQUE, email TEXT UNIQUE, name TEXT, avatar_url TEXT, created_at INTEGER), sessions (id TEXT PK, user_id TEXT FK→users, token_hash TEXT UNIQUE, expires_at INTEGER, created_at INTEGER), notion_configs (id TEXT PK, user_id TEXT UNIQUE FK→users, integration_token_encrypted TEXT, database_id TEXT, validated_at INTEGER, created_at INTEGER, updated_at INTEGER). Přidej AES-256-GCM šifrování Notion tokenu přes Node.js crypto modul s NOTION_ENCRYPTION_KEY env.`
+- **Claude Code zadání**: `Vytvoř src/db/index.ts (inicializace better-sqlite3, WAL mode, foreign keys ON, připojení k souboru z DATABASE_PATH env). Vytvoř src/db/migrations/ runner: čte všechny *.sql soubory seřazené dle čísla, ukládá provedené migrace do schema_migrations tabulky, přeskočí již provedené. Migrace 001_init.sql: tabulky users (id TEXT PK, google_id TEXT UNIQUE, email TEXT UNIQUE, name TEXT, avatar_url TEXT, created_at INTEGER), sessions (id TEXT PK, user_id TEXT FK→users, token_hash TEXT UNIQUE, expires_at INTEGER, created_at INTEGER), notion_configs (id TEXT PK, user_id TEXT UNIQUE FK→users, integration_token_encrypted TEXT, database_id TEXT, validated_at INTEGER, created_at INTEGER, updated_at INTEGER). Přidej AES-256-GCM šifrování Notion tokenu přes Node.js crypto modul v src/db/encryption.ts: klíč načíst jako Buffer.from(key, "hex") – vždy ověřit délku 32 bajtů (process.exit(1) jinak), IV generovat crypto.randomBytes(12) pro každé šifrování zvlášť, serializovat jako Buffer.concat([iv(12), authTag(16), ciphertext]).toString("base64"). Nikdy nepoužívat statický IV.`
 - **Technologie/nástroje**: better-sqlite3 9.x, Node.js crypto (built-in)
 
 ---
@@ -194,7 +196,7 @@
 - **Vstup**: Google Cloud Console setup (manuální), SQLite schema z 1.2
 - **Výstup**: Funkční `/auth/google`, `/auth/google/callback`, `/auth/me`, `/auth/logout` endpointy
 - **Testy/Revize**: Přihlášení přes Google funguje; cookie se nastaví; `/auth/me` vrátí uživatele; logout smaže session ze SQLite
-- **Claude Code zadání**: `Implementuj src/plugins/auth.ts: Google OAuth 2.0 redirect flow (bez google-auth-library – použij standardní OAuth2 s fetch pro token exchange a Google Identity API pro userinfo na https://www.googleapis.com/oauth2/v3/userinfo). Vygeneruj JWT (jose library) s expirací 7 dní, ulož session hash do SQLite sessions tabulky. HTTPOnly Secure SameSite=Strict cookie. Přidej middleware pro ověření JWT + kontrolu existence session v SQLite (umožňuje invalidaci). Logout: smaže session z DB, clearCookie. Endpoint /auth/mobile pro iOS Google Sign-In SDK (přijme id_token, vrátí cookie).`
+- **Claude Code zadání**: `Implementuj src/plugins/auth.ts: Google OAuth 2.0 redirect flow (bez google-auth-library – použij standardní OAuth2 s fetch pro token exchange a Google Identity API pro userinfo na https://www.googleapis.com/oauth2/v3/userinfo). CSRF ochrana: při /auth/google vygeneruj crypto.randomBytes(32).toString("hex") jako state, ulož do HTTPOnly cookie oauth_state s SameSite=Lax a maxAge=600 (10 min) – Lax je nutné pro OAuth redirect z Googlu; při /auth/google/callback ověř state vůči cookie a okamžitě smaž oauth_state cookie. PKCE: vygeneruj codeVerifier (randomBytes(32).toString("base64url")), spočítej codeChallenge (SHA-256 → base64url), ulož verifier do session cookie, přidej code_challenge a code_challenge_method=S256 do Google OAuth URL, v callbacku pošli code_verifier při token exchange. Vygeneruj JWT (jose library) s expirací 7 dní, ulož bcrypt hash session tokenu do SQLite sessions tabulky. HTTPOnly Secure SameSite=Strict cookie pro session JWT. Přidej middleware pro ověření JWT + kontrolu existence session v SQLite (umožňuje invalidaci). Logout: smaže session z DB, clearCookie. Endpoint /auth/mobile pro iOS Google Sign-In SDK (přijme id_token, verifikuj ho vůči https://oauth2.googleapis.com/tokeninfo?id_token=XXX, ověř aud === GOOGLE_CLIENT_ID_IOS a exp > now(), vrátí session cookie).`
 - **Technologie/nástroje**: jose (JWT), @fastify/cookie, Google Identity API (https://www.googleapis.com/oauth2/v3/userinfo)
 - **Manuální kroky (Google Cloud Console)**:
   1. Jdi na https://console.cloud.google.com → New Project: `NotionTodoApp`
@@ -224,7 +226,7 @@
 - **Kdo**: `[Claude]`
 - **Vstup**: NotionService z 1.4
 - **Výstup**: `GET/POST /api/tasks`, `GET/PATCH/DELETE /api/tasks/:id`, `POST /api/tasks/:id/subtasks`, Zod schémata v `packages/shared`, Swagger UI na `/docs`
-- **Testy/Revize**: Všechny endpointy vrátí validovaná data; neplatné vstupy vrátí 400 s popisem chyby; `/docs` zobrazí OpenAPI dokumentaci
+- **Testy/Revize**: Všechny endpointy vrátí validovaná data; neplatné vstupy vrátí 400 s popisem chyby; `/docs` zobrazí OpenAPI dokumentaci v development, v produkci vrátí 404
 - **Claude Code zadání**: `V packages/shared/src/schemas.ts vytvoř Zod schémata pro Task (name: string, status: enum(Todo/InProgress/Review/Done), tags: string[], dueDate: date optional, timeline: {start: date, end: date} optional, ownerIds: string[], description: string optional, dependsOnIds: string[], parentId: string optional). V packages/api vytvoř src/routes/tasks.ts: GET /api/tasks (query params: search, tags, status, parentId), POST /api/tasks, GET /api/tasks/:id, PATCH /api/tasks/:id, DELETE /api/tasks/:id, POST /api/tasks/:id/subtasks. Každý endpoint: auth middleware + Zod validace + @fastify/swagger JSON schema. Přidej /api/tasks/:id/subtasks GET endpoint vracející child tasks.`
 - **Technologie/nástroje**: Zod 3.x, packages/shared workspace, @fastify/swagger, @fastify/swagger-ui
 
@@ -237,7 +239,7 @@
 - **Vstup**: Fastify projekt z 1.1, auth middleware z 1.3
 - **Výstup**: Rate limiting aktivní na všech routách
 - **Testy/Revize**: Po překročení limitu vrátí 429 s Retry-After hlavičkou
-- **Claude Code zadání**: `Nakonfiguruj @fastify/rate-limit plugin dvakrát: pro /auth/* keyGenerator podle IP (respektuj X-Forwarded-For za Traefikem, max 1 hop), pro /api/* keyGenerator podle req.user.id (dostupný po auth middleware), max 300 req za 60s. Custom errorMessage v JSON formátu s retryAfter hodnotou. Přidaj RateLimit-* headers do response. Při přidání X-Forwarded-For ověř, že se bere jen první IP (ochrana proti IP spoofing).`
+- **Claude Code zadání**: `Nakonfiguruj @fastify/rate-limit plugin dvakrát: pro /auth/* keyGenerator podle IP (trustProxy: 1 je nastaveno na Fastify instanci v 1.1 – správně vezme první IP z X-Forwarded-For, ne IP Traefiku), pro /api/* keyGenerator podle req.user.id (dostupný po auth middleware), max 300 req za 60s. Custom errorMessage v JSON formátu s retryAfter hodnotou. Přidaj RateLimit-* headers do response. Ověř, že keyGenerator pro /auth/* bere req.ip (po trustProxy: 1 je to klientova IP, ne Traefik).`
 - **Technologie/nástroje**: @fastify/rate-limit
 
 ---
@@ -249,7 +251,7 @@
 - **Vstup**: Fastify projekt z 1.1
 - **Výstup**: CORS a security headers aktivní
 - **Testy/Revize**: Request z nepovolené domény vrátí CORS chybu; headers obsahují CSP, HSTS, X-Frame-Options
-- **Claude Code zadání**: `Nakonfiguruj @fastify/cors: origin povoleno pouze pro FRONTEND_URL env proměnnou (v dev http://localhost:5173), credentials: true. Nakonfiguruj @fastify/helmet s CSP politikou (default-src 'self', script-src 'self', style-src 'self' 'unsafe-inline'). Přidej HSTS header pro produkci (Strict-Transport-Security: max-age=63072000). Ověř, že Fastify nevystavuje X-Powered-By header.`
+- **Claude Code zadání**: `Nakonfiguruj @fastify/cors: origin povoleno pouze pro FRONTEND_URL env proměnnou (v dev http://localhost:5173), credentials: true. Nakonfiguruj @fastify/helmet s CSP politikou (default-src 'self', script-src 'self', style-src 'self' 'unsafe-inline' – unsafe-inline je nutné pro Tailwind CSS generované styly, přijatelné riziko pro styly na rozdíl od skriptů). Přidej HSTS header pro produkci (Strict-Transport-Security: max-age=63072000; includeSubDomains). Ověř, že Fastify nevystavuje X-Powered-By header. Poznámka: pokud bude použit SSR nebo nonce-based approach, nahradit unsafe-inline nonce-em pro přísnější CSP.`
 - **Technologie/nástroje**: @fastify/cors, @fastify/helmet
 
 ---
@@ -263,8 +265,8 @@
 - **Vstup**: Backend kód z Fáze 1
 - **Výstup**: `packages/api/src/**/*.test.ts`, pokrytí >80%
 - **Testy/Revize**: `npm run test` projde; coverage report >80%
-- **Claude Code zadání**: `Vytvoř unit testy (Vitest) pro: NotionService.validateDatabase (mock @notionhq/client – testuj správné i nesprávné sloupce), NotionService rate limiting (ověř že queue throttluje na 3 req/s), Zod schémata (platné/neplatné vstupy pro Task), šifrování/dešifrování Notion tokenu (round-trip test), JWT generování a validaci, session invalidace. Použij vi.mock pro external závislosti. Nastav vitest.config.ts s coverage reportem (provider: v8, threshold: 80%).`
-- **Technologie/nástroje**: Vitest 1.x, @vitest/coverage-v8
+- **Claude Code zadání**: `Vytvoř unit testy (Vitest) pro: NotionService.validateDatabase (mock @notionhq/client – testuj správné i nesprávné sloupce), NotionService rate limiting (ověř že queue throttluje na 3 req/s), Zod schémata (platné/neplatné vstupy pro Task), šifrování/dešifrování Notion tokenu (round-trip test, ověř že každé šifrování generuje jiný IV – porovnej dva zašifrované výstupy stejného textu), JWT generování a validaci, session invalidace, OAuth state validace (ověř že callback s neplatným state vrátí 400). Použij vi.mock pro external závislosti. Nastav vitest.config.ts s coverage reportem (provider: v8, threshold: 80%).`
+- **Technologie/nástroje**: Vitest 2.x, @vitest/coverage-v8
 
 ---
 
@@ -301,8 +303,8 @@
 - **Vstup**: Monorepo struktura z 0.2
 - **Výstup**: Fungující Vite dev server s Tailwind, Shadcn/ui komponenty dostupné
 - **Testy/Revize**: `npm run dev` zobrazí landing page; Shadcn Button komponenta se renderuje; TypeScript kompilace bez chyb
-- **Claude Code zadání**: `V packages/web inicializuj Vite React TypeScript projekt. Nastav Tailwind CSS v4 (ověř kompatibilitu s aktuální verzí shadcn/ui – použij shadcn CLI s --legacy-peer-deps pokud potřeba). Přidej shadcn/ui (init s New York style, zinc barvy). Nakonfiguruj path aliasy (@/ → src/). Přidej základní layout: App.tsx s React Router (react-router-dom v7), stránky: LoginPage, SetupPage, DashboardPage. Přidej Error Boundary komponentu pro zachycení runtime chyb. Přidej Poppins font přes Google Fonts. Nastav Vite proxy pro /api/* → http://localhost:3000 v dev módu.`
-- **Technologie/nástroje**: Vite 6.x, React 19, Tailwind CSS 4.x, Shadcn/ui, React Router 7.x
+- **Claude Code zadání**: `V packages/web inicializuj Vite React TypeScript projekt. Nastav Tailwind CSS v3 (shadcn/ui má plnou stabilní podporu pro v3; Tailwind v4 má breaking changes v konfiguraci a kompatibilita se shadcn/ui není garantována – přechod na v4 provést až po oficálním shadcn/ui oznámení podpory). Přidej shadcn/ui (init s New York style, zinc barvy). Nakonfiguruj path aliasy (@/ → src/). Přidej základní layout: App.tsx s React Router (react-router-dom v7), stránky: LoginPage, SetupPage, DashboardPage. Přidej Error Boundary komponentu pro zachycení runtime chyb. Přidej Poppins font přes Google Fonts. Nastav Vite proxy pro /api/* → http://localhost:3000 v dev módu.`
+- **Technologie/nástroje**: Vite 6.x, React 19, Tailwind CSS 3.x, Shadcn/ui, React Router 7.x
 
 ---
 
@@ -461,9 +463,10 @@
 - **Vstup**: Mac s Xcode 15+
 - **Výstup**: Xcode projekt v `packages/ios/`, MVVM folder struktura, .gitignore pro Xcode artefakty
 - **Testy/Revize**: Build a spuštění na iOS Simulator (iPhone 15, iOS 17)
-- **Claude Code zadání**: `Vytvoř packages/ios/ se strukturou: Models/, ViewModels/, Views/, Services/, Components/. Přidej základní App.swift, ContentView.swift, AppRouter pro navigaci. Nastav SwiftLint konfiguraci. Uprav kořenový .gitignore: přidej *.xcuserstate, xcuserdata/, DerivedData/, *.ipa.`
-- **Manuální kroky**: Otevři Xcode → New Project → iOS App → NotionTodoApp, uložení do packages/ios/
-- **Technologie/nástroje**: Xcode 15, Swift 5.9, SwiftUI, SwiftLint
+- **Claude Code zadání**: `Vytvoř packages/ios/ se strukturou: Models/, ViewModels/, Views/, Services/, Components/. Přidej základní App.swift, ContentView.swift, AppRouter pro navigaci. Nastav SwiftLint konfiguraci. Uprav kořenový .gitignore: přidej *.xcuserstate, xcuserdata/, DerivedData/, *.ipa. Nastav Swift 6 language mode v Package.swift (swift-tools-version: 6.0); opatři ViewModely atributem @MainActor, APIClient implementuj jako actor pro thread safety v Swift 6 strict concurrency modelu.`
+- **Manuální kroky**: Otevři Xcode 16 → New Project → iOS App → NotionTodoApp, uložení do packages/ios/
+- **Technologie/nástroje**: Xcode 16, Swift 6.0, SwiftUI, SwiftLint
+- **Poznámka k verzi**: Swift 6 zavádí strict concurrency – všechny async operace v ViewModelech musí být @MainActor nebo explicitně Sendable. Migrace z Swift 5.9 na 6.0 vyžaduje úpravu async/await kódu.
 
 ---
 
@@ -486,9 +489,9 @@
 - **Vstup**: Google Cloud Console iOS client ID (manuální)
 - **Výstup**: Funkční přihlášení, session cookie persistována
 - **Testy/Revize**: Přihlášení zobrazí Google sheet; po přihlášení se zobrazí dashboard
-- **Claude Code zadání**: `Implementuj AuthViewModel s @Published currentUser. Přidej Google Sign-In Swift Package (GoogleSignIn-iOS). Po úspěšném Google Sign-In pošli id_token na backend /auth/mobile endpoint, dostaneš JWT cookie – automaticky uložena v HTTPCookieStorage. Přidej Keychain wrapper pro persistenci cookie hodnoty přes restarty app. Naslouchej NotificationCenter 401 událostem z APIClient pro automatický logout.`
-- **Manuální kroky**: V Google Cloud Console přidej iOS OAuth client s Bundle ID tvé aplikace
-- **Technologie/nástroje**: GoogleSignIn Swift Package, Security framework (Keychain)
+- **Claude Code zadání**: `Implementuj AuthViewModel jako @MainActor class s @Published currentUser. Přidej Google Sign-In Swift Package (GoogleSignIn-iOS). Po úspěšném Google Sign-In pošli id_token na backend /auth/mobile endpoint (backend verifikuje token vůči Google – viz 1.3), dostaneš Set-Cookie header – ulož cookie do HTTPCookieStorage.shared (nikoliv do Keychain – HTTPOnly cookie záměrně nemá být čitelná aplikací; HTTPCookieStorage ji persistuje automaticky mezi restarty přes standardní iOS cookie storage). Nastav URLSessionConfiguration.default.httpCookieStorage = .shared a httpShouldSetCookies = true. Naslouchej NotificationCenter 401 událostem z APIClient pro automatický logout.`
+- **Manuální kroky**: V Google Cloud Console přidej iOS OAuth client s Bundle ID tvé aplikace; přidej `GOOGLE_CLIENT_ID_IOS` do GitHub Secrets a env vars
+- **Technologie/nástroje**: GoogleSignIn Swift Package, URLSession cookie storage (bez Keychain – HTTPCookieStorage persistuje automaticky)
 
 ---
 
@@ -673,8 +676,9 @@
 - **Kdo**: `[Claude+Uživatel]`
 - **Vstup**: Běžící produkce z 7.3
 - **Výstup**: Uptime Kuma dashboard, notifikace na email/Slack, SSL expiry monitoring
-- **Claude Code zadání**: `Přidej Uptime Kuma do infra/docker-compose.yml (louislam/uptime-kuma:1). Přidej /health endpoint do Fastify API: JSON {status: "ok", uptime: process.uptime(), db: "connected", version: process.env.npm_package_version}. Přidej SSL certifikát monitor do Uptime Kuma konfigurace (typ: Certificate expiry, upozornění 14 dní před expirací). Vytvoř monitoring docker compose override soubor.`
+- **Claude Code zadání**: `Přidej Uptime Kuma do infra/docker-compose.yml (louislam/uptime-kuma:1). Přidej /health endpoint do Fastify API: JSON {status: "ok", uptime: process.uptime(), db: "connected"} – nevystavuj version (information disclosure – pomáhá útočníkovi cílit na CVE konkrétní verze). Přidej SSL certifikát monitor do Uptime Kuma konfigurace (typ: Certificate expiry, upozornění 14 dní před expirací). Vytvoř monitoring docker compose override soubor.`
 - **Manuální kroky**: Přistup na Uptime Kuma UI (:3001), přidej monitor pro API /health, web URL a SSL certifikát, nastav email notifikace
+- **Poznámka k architektuře**: Uptime Kuma běží na stejném hostiteli jako aplikace – při výpadku hostitele selže zároveň s aplikací. Pro kritické produkce zvažte externí monitoring (Better Uptime, Checkly) jako doplněk.
 - **Technologie/nástroje**: Uptime Kuma, Fastify health endpoint
 
 ---
@@ -685,7 +689,7 @@
 - **Kdo**: `[Claude+Uživatel]`
 - **Vstup**: Produkční VPS
 - **Výstup**: Cron job pro denní zálohy SQLite, zálohy v Backblaze B2 nebo AWS S3
-- **Claude Code zadání**: `Vytvoř backup.sh skript: SQLite .backup příkaz (ne cp – .backup je transakčně bezpečné) do timestampovaného souboru /opt/notionapp/backups/db-$(date +%Y%m%d-%H%M%S).sqlite, komprimuj gzip, nahraj do B2/S3 přes rclone nebo aws cli, smaž lokální zálohy starší 7 dní (vzdálené 30 dní). Přidej do /etc/cron.d/ pro spouštění každý den v 3:00. Přidej test zálohy: ověř že SQLite soubor lze otevřít po stažení.`
+- **Claude Code zadání**: `Vytvoř backup.sh skript: SQLite .backup příkaz (ne cp – .backup je transakčně bezpečné) do timestampovaného souboru /tmp/db-$(date +%Y%m%d-%H%M%S).sqlite, komprimuj gzip, šifruj pomocí GPG symetrickým šifrováním AES256 s heslem z env proměnné BACKUP_ENCRYPTION_KEY (gpg --batch --yes --passphrase "${BACKUP_ENCRYPTION_KEY}" --symmetric --cipher-algo AES256 soubor.gz), nahraj .gpg soubor do B2/S3 přes rclone, smaž lokální dočasné soubory. Smaž vzdálené zálohy starší 30 dní. Přidej do /etc/cron.d/ pro spouštění každý den v 3:00. Přidej test zálohy: stáhni, dešifruj a ověř že SQLite soubor lze otevřít (sqlite3 file.sqlite ".tables"). Přidej BACKUP_ENCRYPTION_KEY do .env.example a GitHub Secrets.`
 - **Manuální kroky**: Vytvoř Backblaze B2 bucket, nastav rclone konfiguraci na VPS, otestuj manuální zálohu
 - **Technologie/nástroje**: SQLite .backup, rclone, cron
 
@@ -781,8 +785,11 @@
 | SQLite concurrency issues při mnoha uživatelích | Střední | Střední | WAL mode, better-sqlite3 je synchronní (jen jedno vlákno), zvažuj migraci na PostgreSQL při škálování |
 | iOS App Store review zamítnutí | Střední | Vysoký | Dodržuj HIG guidelines, testuj na reálném zařízení před odesláním, připrav review notes |
 | Notion API breaking changes | Nízká | Vysoký | Pinuj verzi @notionhq/client, sleduj Notion changelog, integration testy zachytí regresi |
-| VPS výpadek | Nízká | Vysoký | Uptime Kuma alerting, manuální restart procedura dokumentována, zvažuj 2 VPS s failover |
+| VPS výpadek | Nízká | Vysoký | Uptime Kuma alerting + externí monitor (Checkly/Better Uptime), manuální restart procedura dokumentována |
 | JWT secret kompromitace | Velmi nízká | Kritický | Rotace JWT secret = invalidace všech sessions (akceptovatelné); sessions v SQLite umožňují granulární invalidaci bez změny secret |
-| Únos Google OAuth callback | Nízká | Kritický | Whitelist redirect URIs v Google Console, validuj state parametr, PKCE flow |
+| Únos Google OAuth callback | Nízká | Kritický | Whitelist redirect URIs v Google Console, state parametr CSRF ochrana (implementováno v 1.3), PKCE flow (implementováno v 1.3) |
 | Deploy selhání v produkci | Střední | Vysoký | Automatický rollback na předchozí image tag při selhání health checku (viz 7.3) |
 | SSL certifikát expiruje | Nízká | Vysoký | Traefik obnovuje automaticky; Uptime Kuma monitoruje 14 dní před expirací (viz 7.4) |
+| Swift 6 strict concurrency breaking changes | Střední | Střední | Xcode 16 + Swift 6; ViewModely jako @MainActor, APIClient jako actor (viz 5.1) |
+| Tailwind/shadcn/ui nekompatibilita | Nízká | Střední | Použit Tailwind v3 (plná podpora shadcn/ui); přechod na v4 až po oficálním oznámení |
+| Backup únik (SQLite s tokeny) | Nízká | Vysoký | Zálohy šifrovány GPG AES-256 před uploadem do B2/S3 (viz 7.5) |
