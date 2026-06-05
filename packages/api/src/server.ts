@@ -14,6 +14,7 @@ import setupRoutes from './routes/setup';
 import tasksRoutes from './routes/tasks';
 import { NotionService } from './services/notion/service';
 import { TokenCipher } from './crypto/tokenCrypto';
+import { FixedWindowLimiter, makeUserRateLimit } from './lib/userRateLimit';
 
 export interface BuildServerOptions {
   /** Volitelné DB připojení – využije /health pro kontrolu stavu. */
@@ -32,8 +33,13 @@ export async function buildServer(
 ): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(env),
-    trustProxy: true, // za Traefikem – respektuj X-Forwarded-* (rate limiting v 1.6)
+    // Přesný počet proxy hopů (za Traefikem 1) – klientská IP z X-Forwarded-For
+    // se bere jen tolik hopů zpět, takže ji klient nemůže podvrhnout (PLAN.md 1.6).
+    trustProxy: env.TRUST_PROXY_HOPS,
     bodyLimit: MAX_BODY_BYTES,
+    // Další DoS limity: timeout spojení a maximální délka URL parametru.
+    connectionTimeout: 30_000,
+    routerOptions: { maxParamLength: 256 },
     disableRequestLogging: env.NODE_ENV === 'test',
   });
 
@@ -66,15 +72,26 @@ export async function buildServer(
   // --- Cookies (auth flow ve Fázi 1.3) ---
   await app.register(cookie, {});
 
-  // --- Rate limiting (globální základ; dvouúrovňové ladění ve Fázi 1.6) ---
+  // --- Rate limiting, úroveň 1: per-IP na onRequest (PŘED autentizací) ---
+  // Hrubý flood guard pro všechny routy. /auth/* má přísnější limit, /api/*
+  // dostane navíc per-user limit (úroveň 2) až po ověření session. /health je
+  // vyňato (sondy load balanceru).
   await app.register(rateLimit, {
-    max: 300,
-    timeWindow: '1 minute',
-    errorResponseBuilder: (_req, context) => ({
-      error: 'TooManyRequests',
-      message: `Překročen limit požadavků. Zkus to znovu za ${context.after}.`,
-      retryAfter: context.ttl,
-    }),
+    max: (req) =>
+      req.url.startsWith('/auth/') ? env.RATE_LIMIT_AUTH_MAX : env.RATE_LIMIT_API_IP_MAX,
+    timeWindow: env.RATE_LIMIT_WINDOW_MS,
+    allowList: (req) => req.url === '/health',
+    enableDraftSpec: true, // RateLimit-* hlavičky
+    // @fastify/rate-limit VYHAZUJE výsledek builderu → musí to být Error se
+    // statusCode (jinak ho setErrorHandler vyhodnotí jako 500). retryAfter
+    // si přečte 429 větev error handleru.
+    errorResponseBuilder: (_req, context) => {
+      const retryAfter = Math.ceil(context.ttl / 1000);
+      return Object.assign(
+        new Error(`Překročen limit požadavků. Zkus to znovu za ${retryAfter} s.`),
+        { statusCode: context.statusCode, retryAfter },
+      );
+    },
   });
 
   // --- OpenAPI dokumentace (jen mimo produkci – /docs nevystavujeme veřejně) ---
@@ -105,6 +122,13 @@ export async function buildServer(
       return;
     }
 
+    // Rate limit (vyhozený @fastify/rate-limit) – jednotný tvar s per-user limitem.
+    if (err.statusCode === 429) {
+      const retryAfter = (err as FastifyError & { retryAfter?: number }).retryAfter;
+      reply.status(429).send({ error: 'TooManyRequests', message: err.message, retryAfter });
+      return;
+    }
+
     const status = err.statusCode ?? 500;
     const exposeMessage = !isProd || status < 500;
     reply.status(status).send({
@@ -118,8 +142,18 @@ export async function buildServer(
     await app.register(authPlugin, { db: opts.db, env });
     const cipher = opts.cipher ?? new TokenCipher(env.NOTION_ENCRYPTION_KEY);
     const notion = opts.notion ?? new NotionService();
-    await app.register(setupRoutes, { db: opts.db, cipher, notion });
-    await app.register(tasksRoutes, { db: opts.db, cipher, notion });
+
+    // Rate limiting, úroveň 2: per-user limit pro /api/* (běží až po auth).
+    const apiLimiter = new FixedWindowLimiter(
+      env.RATE_LIMIT_API_USER_MAX,
+      env.RATE_LIMIT_WINDOW_MS,
+    );
+    const stopApiLimiterCleanup = apiLimiter.startCleanup();
+    app.addHook('onClose', () => stopApiLimiterCleanup());
+    const apiRateLimit = makeUserRateLimit(apiLimiter);
+
+    await app.register(setupRoutes, { db: opts.db, cipher, notion, apiRateLimit });
+    await app.register(tasksRoutes, { db: opts.db, cipher, notion, apiRateLimit });
   }
 
   // --- Health check (rozšířeno v 1.8) ---

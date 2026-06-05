@@ -24,6 +24,14 @@ export const envSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_REDIRECT_URI: z.string().url().optional(),
   GOOGLE_IOS_CLIENT_ID: z.string().optional(),
+
+  // Rate limiting (PLAN.md 1.6). Počet proxy hopů před appkou – za Traefikem 1.
+  // Důležité pro bezpečné určení klientské IP (ne spoofovatelné z X-Forwarded-For).
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(1),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
+  RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(120), // per IP, /auth/*
+  RATE_LIMIT_API_IP_MAX: z.coerce.number().int().positive().default(600), // per IP, pre-auth flood guard
+  RATE_LIMIT_API_USER_MAX: z.coerce.number().int().positive().default(300), // per user ID, /api/*
 });
 
 export type Env = z.infer<typeof envSchema>;
