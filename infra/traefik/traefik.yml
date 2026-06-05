@@ -1,0 +1,36 @@
+# Statická konfigurace Traefik (reverse proxy + Let's Encrypt HTTPS).
+# Doplň svůj e-mail níže před prvním spuštěním (PLAN.md 0.6).
+entryPoints:
+  web:
+    address: ':80'
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ':443'
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: 'REPLACE_WITH_YOUR_EMAIL@example.com'
+      storage: /acme.json
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: traefik-public
+
+# Dashboard běží na :8080, ale v compose je namapován pouze na 127.0.0.1
+# (přístup jen přes SSH tunel, ne veřejně).
+api:
+  dashboard: true
+  insecure: true
+
+log:
+  level: INFO
+accessLog: {}

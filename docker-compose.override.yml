@@ -1,0 +1,22 @@
+# Automaticky načteno `docker compose up` navíc k docker-compose.yml (jen dev).
+# Zdrojový kód je bind-mountován pro hot-reload; node_modules zůstávají
+# v named volume (nepřepisují se hostitelským adresářem).
+services:
+  api:
+    command: npm run dev:api
+    volumes:
+      - ./packages/api:/app/packages/api
+      - ./packages/shared:/app/packages/shared
+      - api-node-modules:/app/node_modules
+      - sqlite-data:/data
+
+  web:
+    command: npm run dev:web
+    volumes:
+      - ./packages/web:/app/packages/web
+      - ./packages/shared:/app/packages/shared
+      - web-node-modules:/app/node_modules
+
+volumes:
+  api-node-modules:
+  web-node-modules:

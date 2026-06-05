@@ -1,0 +1,21 @@
+# Dev image pro backend API (hot-reload přes bind mount + tsx watch).
+# Produkční multi-stage Dockerfile vznikne ve Fázi 7.2.
+FROM node:20-alpine
+
+# Build nástroje pro nativní moduly (better-sqlite3).
+RUN apk add --no-cache python3 make g++ curl
+
+WORKDIR /app
+
+# Nejprve manifesty kvůli cache vrstvy závislostí.
+COPY package.json package-lock.json* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/api/package.json ./packages/api/
+COPY packages/web/package.json ./packages/web/
+RUN npm install
+
+# Zbytek zdroje (v dev je stejně přepsán bind mountem z override).
+COPY . .
+
+EXPOSE 3000
+CMD ["npm", "run", "dev:api"]

@@ -1,0 +1,28 @@
+# iOS CI – manuální spuštění (macOS runnery jsou drahé). Výchozí stav: vypnuto.
+# Aktivuje se ručně přes "Run workflow" v GitHub Actions, až bude Xcode projekt
+# (packages/ios) hotový – viz PLAN.md Fáze 5.
+name: iOS CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & test (Xcode)
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: packages/ios
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Build & test
+        run: |
+          xcodebuild test \
+            -scheme NotionTodoApp \
+            -destination 'platform=iOS Simulator,name=iPhone 15,OS=latest' \
+            CODE_SIGNING_ALLOWED=NO
