@@ -1,0 +1,36 @@
+# Lokální vývoj. iOS se buildí výhradně v Xcode – není součástí Dockeru.
+# Dev overrides (bind mounty, watch příkazy) jsou v docker-compose.override.yml.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile.dev
+    image: notiontodoapp-api:dev
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: '3000'
+      DATABASE_PATH: /data/app.sqlite
+      FRONTEND_URL: http://localhost:5173
+    ports:
+      - '3000:3000'
+    volumes:
+      - sqlite-data:/data
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile.dev
+    image: notiontodoapp-web:dev
+    environment:
+      NODE_ENV: development
+    ports:
+      - '5173:5173'
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  sqlite-data:
