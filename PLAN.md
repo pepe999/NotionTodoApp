@@ -35,7 +35,7 @@
 
 ## Přehled fází (checklist)
 
-- [~] **FÁZE 0** – Příprava a infrastruktura _(scaffolding hotový: 0.1–0.4, 0.6 konfig; čeká na uživatele: 0.5 VPS, 0.7 Secrets, doména pro 0.6)_
+- [~] **FÁZE 0** – Příprava a infrastruktura _(hotovo: 0.1–0.4 + branch protection na main, 0.5/0.6 splněny STÁVAJÍCÍM serverem, 0.7 deploy secrets `VPS_*`; **ZBÝVÁ: vytvořit Google OAuth client** – viz „Skutečný stav infrastruktury" níže)_
 - [~] **FÁZE 1** – Backend API (Fastify + TypeScript) _(hotovo: 1.1 setup, 1.2 SQLite+AES-GCM, 1.3 Google OAuth+PKCE+sessions+/auth/mobile, 1.4 Notion service + setup endpointy)_
 - [ ] **FÁZE 2** – Testy backendu
 - [ ] **FÁZE 3** – Frontend Web (React + Vite)
@@ -48,6 +48,64 @@
 ---
 
 ## FÁZE 0: Příprava a infrastruktura
+
+> ### ⚙️ Skutečný stav infrastruktury (aktualizováno 2026-06-05)
+>
+> Původní sekce 0.5–0.7 popisují setup „od nuly" na novém serveru. **Realita je jiná** –
+> aplikace se nasazuje na už existující, plně provozovaný server. Tato poznámka je
+> závazná; podsekce 0.5/0.6/0.7 ber přes ni.
+>
+> **Server (Hetzner):** `46.225.77.14`, hostname `PepaVPS`, **Ubuntu 24.04, ARM / aarch64**.
+> Už na něm běží 6 aplikací (vč. staré `notion-todo` na `todo.josefbina.cz`).
+> - Docker 29 + Compose v5 **už nainstalováno**.
+> - **Traefik v3.6 už běží** (`/opt/apps/traefik`, síť `traefik-public`, Let's Encrypt).
+>   → Adresář `infra/traefik/` v tomto repu se **NEPOUŽIJE** (server má vlastní Traefik).
+> - Firewall řeší **Hetzner Cloud Firewall**, `ufw` je záměrně vypnuté.
+> - **Žádný `deploy` uživatel** – appky běží jako `root` v `/opt/apps/<jméno>`, build lokálně.
+>
+> **Deploy model = A (lokální build na serveru).** Zvoleno kvůli ARM (amd64 image z GHCR
+> by neběžel) a kvůli konzistenci se zbytkem serveru. GHCR se nepoužívá, `GHCR_TOKEN`
+> není potřeba. `deploy.yml` přepsán (SSH → `git reset origin/main` → `docker compose
+> build & up` → health check → rollback), trigger dočasně `workflow_dispatch`.
+>
+> **Cílový adresář na serveru (Fáze 7):** `/opt/apps/notion-todo-app` (oddělený od staré
+> `notion-todo`, aby `todo.josefbina.cz` jelo dál až do přepnutí).
+>
+> **GitHub Secrets – stav (model A čte z GH Secrets jen `VPS_*`):**
+> | Secret | Stav | Pozn. |
+> |--------|------|-------|
+> | `VPS_HOST` = `46.225.77.14` | ✅ nastaveno | |
+> | `VPS_USER` = `root` | ✅ nastaveno | |
+> | `VPS_SSH_KEY` | ✅ nastaveno | vyhrazený `github_deploy` klíč, autorizovaný pro root |
+> | `JWT_SECRET` | ✅ vygenerováno | u modelu A **patří do server `.env`**, ne do GH Secrets – ponecháno jako reference |
+> | `NOTION_ENCRYPTION_KEY` | ✅ vygenerováno | dtto |
+> | `DOMAIN` = `todo.josefbina.cz` | ✅ nastaveno | dtto |
+> | `GHCR_TOKEN` | ❌ netřeba | model A nebuildí v GHCR |
+> | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | ❌ **ZBÝVÁ** | viz TODO níže |
+>
+> **Branch protection na `main`:** ✅ nastaveno (PR povinné, 0 schválení, zákaz force-push/mazání).
+>
+> ---
+>
+> ### ✅ TODO – co ještě dodělat ve Fázi 0
+>
+> 1. **Vytvořit Google OAuth client** (Google Cloud Console → APIs & Services):
+>    - OAuth consent screen: **External**, app `NotionTodoApp`, přidat se jako **Test user**.
+>    - Credentials → OAuth client ID → **Web application**.
+>    - **Authorized JavaScript origins:** `http://localhost:5173`, `http://localhost:3000`
+>    - **Authorized redirect URIs:**
+>      - `http://localhost:3000/auth/google/callback` (dev – odpovídá routě v `packages/api/src/plugins/auth.ts`)
+>      - `https://todo.josefbina.cz/auth/google/callback` (prod – doladí se ve Fázi 7)
+>    - Výsledný **Client ID** a **Client Secret** ulož do **lokálního `.env`** (dev) – `.env`
+>      v repu zatím není, vytvoř z `.env.example` a doplň i `GOOGLE_REDIRECT_URI=http://localhost:3000/auth/google/callback`.
+>      `JWT_SECRET` a `NOTION_ENCRYPTION_KEY` pro dev vygeneruj (`openssl rand -base64 64` / `-hex 32`).
+>    - Tytéž hodnoty (Google creds + JWT + NOTION_ENCRYPTION_KEY) půjdou ve **Fázi 7** do
+>      serverového `/opt/apps/notion-todo-app/.env` (NE do GitHub Secrets).
+> 2. *(volitelné)* `iOS` Google client ID (`GOOGLE_IOS_CLIENT_ID`) až ve **Fázi 5**.
+>
+> Tím je Fáze 0 hotová. Vlastní nasazení (naklonovat repo do `/opt/apps/notion-todo-app`,
+> produkční Dockerfiles + produkční compose s Traefik labely pro `todo.josefbina.cz`,
+> přepnutí ze staré appky, odkomentovat `push: main` v `deploy.yml`) je náplň **Fáze 7**.
 
 ### 0.1 Git repozitář a větve strategie
 
@@ -103,6 +161,10 @@
 
 ### 0.5 VPS server setup
 
+> ✅ **SPLNĚNO stávajícím serverem** – viz „Skutečný stav infrastruktury" výše.
+> Server existuje, Docker/firewall/Traefik hotové. Kroky níže (nový server, `deploy`
+> uživatel, `ufw`) se **neprovádějí** – neodpovídají realitě (root + Hetzner FW).
+
 - **Popis**: Příprava Ubuntu VPS serveru – instalace Dockeru, nastavení firewallu, SSH klíče, uživatel pro deploy.
 - **Kdo**: `[Uživatel]` (manuální kroky)
 - **Vstup**: Hetzner nebo DigitalOcean účet
@@ -123,6 +185,11 @@
 
 ### 0.6 Traefik + HTTPS setup
 
+> ✅ **SPLNĚNO stávajícím serverem** – Traefik v3.6 už běží (`/opt/apps/traefik`),
+> `todo.josefbina.cz` na server míří. Adresář `infra/traefik/` v repu se **nepoužije**
+> (jeho `traefik.yml` e-mail je tedy bezpředmětný). Produkční Traefik labely pro appku
+> se přidají do produkčního compose ve **Fázi 7**.
+
 - **Popis**: Traefik jako reverse proxy s automatickým Let's Encrypt HTTPS certifikátem.
 - **Kdo**: `[Claude+Uživatel]`
 - **Vstup**: VPS z 0.5, doména
@@ -140,6 +207,12 @@
 ---
 
 ### 0.7 GitHub Secrets konfigurace
+
+> ⚠️ **Aktualizováno pro model A** – viz tabulka v „Skutečný stav infrastruktury" výše.
+> Hotové: `VPS_HOST`, `VPS_USER=root`, `VPS_SSH_KEY`, `JWT_SECRET`, `NOTION_ENCRYPTION_KEY`,
+> `DOMAIN`. `GHCR_TOKEN` se **nepoužívá**. `VPS_USER` je `root` (ne `deploy`).
+> U modelu A patří aplikační tajemství (JWT, NOTION_ENCRYPTION_KEY, GOOGLE_*) do serverového
+> `.env`, ne do GH Secrets. **Zbývá jen vytvořit Google OAuth client** (TODO výše).
 
 - **Popis**: Nastavení všech potřebných GitHub Secrets pro CI/CD pipeline.
 - **Kdo**: `[Uživatel]` (manuální kroky)
