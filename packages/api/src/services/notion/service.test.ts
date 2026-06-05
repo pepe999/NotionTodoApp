@@ -45,6 +45,16 @@ describe('NotionService', () => {
     expect(url).toBe('https://api.notion.com/v1/databases/274d8f1e-2a3b-4c5d-6e7f-8091a2b3c4d5');
   });
 
+  it('getTask načte jednu stránku přes GET /pages/{id}', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(pageFixture('p1', 'Detail')));
+    const service = makeService(fetchMock as unknown as typeof fetch);
+
+    const task = await service.getTask(ctx, DB_ID);
+    expect(task.name).toBe('Detail');
+    const url = (fetchMock as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+    expect(url).toBe('https://api.notion.com/v1/pages/274d8f1e-2a3b-4c5d-6e7f-8091a2b3c4d5');
+  });
+
   it('getTasks projde celé stránkování a pak cachuje', async () => {
     const fetchMock = vi.fn();
     fetchMock

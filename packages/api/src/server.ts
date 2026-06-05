@@ -11,6 +11,7 @@ import { buildLoggerOptions } from './logger';
 import type { DB } from './db/index';
 import authPlugin from './plugins/auth';
 import setupRoutes from './routes/setup';
+import tasksRoutes from './routes/tasks';
 import { NotionService } from './services/notion/service';
 import { TokenCipher } from './crypto/tokenCrypto';
 
@@ -81,6 +82,10 @@ export async function buildServer(
     await app.register(swagger, {
       openapi: {
         info: { title: 'NotionTodoApp API', version: '0.1.0' },
+        tags: [
+          { name: 'tasks', description: 'Správa úkolů (Notion)' },
+          { name: 'setup', description: 'Konfigurace Notion integrace' },
+        ],
       },
     });
     await app.register(swaggerUi, { routePrefix: '/docs' });
@@ -108,12 +113,13 @@ export async function buildServer(
     });
   });
 
-  // --- Auth (OAuth, sessions, /auth/*) + Notion setup – vyžaduje DB ---
+  // --- Auth (OAuth, sessions, /auth/*) + Notion setup/tasks – vyžaduje DB ---
   if (opts.db) {
     await app.register(authPlugin, { db: opts.db, env });
     const cipher = opts.cipher ?? new TokenCipher(env.NOTION_ENCRYPTION_KEY);
     const notion = opts.notion ?? new NotionService();
     await app.register(setupRoutes, { db: opts.db, cipher, notion });
+    await app.register(tasksRoutes, { db: opts.db, cipher, notion });
   }
 
   // --- Health check (rozšířeno v 1.8) ---
