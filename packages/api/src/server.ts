@@ -43,30 +43,49 @@ export async function buildServer(
     disableRequestLogging: env.NODE_ENV === 'test',
   });
 
-  // --- Bezpečnostní hlavičky (helmet) ---
+  // --- Bezpečnostní hlavičky (helmet) – PLAN.md 1.7 ---
   // CSP a HSTS jen v produkci; v devu je CSP vypnutá kvůli Swagger UI (/docs).
   const isProd = env.NODE_ENV === 'production';
   await app.register(helmet, {
     contentSecurityPolicy: isProd
       ? {
+          // useDefaults (helmet) ponechá bezpečné výchozí direktivy
+          // (script-src-attr 'none', upgrade-insecure-requests, …); níže jen
+          // zpřísňujeme klíčové. styleSrc bez 'unsafe-inline' – Tailwind v4
+          // generuje statické CSS.
           directives: {
             defaultSrc: ["'self'"],
             scriptSrc: ["'self'"],
             styleSrc: ["'self'"],
+            connectSrc: ["'self'"],
+            imgSrc: ["'self'", 'data:'],
             objectSrc: ["'none'"],
             frameAncestors: ["'none'"],
+            formAction: ["'self'"],
             baseUri: ["'self'"],
           },
         }
       : false,
     hsts: isProd ? { maxAge: 63_072_000, includeSubDomains: true, preload: true } : false,
+    referrerPolicy: { policy: 'no-referrer' },
+    // API a web jsou na stejné doméně (různé subdomény) → same-site.
+    crossOriginResourcePolicy: { policy: 'same-site' },
   });
 
-  // --- CORS: jen povolený frontend origin ---
+  // Permissions-Policy (helmet ji nenastavuje) – zakázat citlivé browser API.
+  const PERMISSIONS_POLICY =
+    'accelerometer=(), autoplay=(), camera=(), display-capture=(), geolocation=(), ' +
+    'gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), browsing-topics=()';
+  app.addHook('onRequest', async (_req, reply) => {
+    reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+  });
+
+  // --- CORS: jen povolený frontend origin (nereflektuje libovolný origin) ---
   await app.register(cors, {
     origin: env.FRONTEND_URL,
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    maxAge: 86_400, // cache preflightu na 24 h
   });
 
   // --- Cookies (auth flow ve Fázi 1.3) ---
