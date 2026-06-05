@@ -12,9 +12,11 @@ import type { DB } from './db/index';
 import authPlugin from './plugins/auth';
 import setupRoutes from './routes/setup';
 import tasksRoutes from './routes/tasks';
+import accountRoutes from './routes/account';
 import { NotionService } from './services/notion/service';
-import { TokenCipher } from './crypto/tokenCrypto';
+import { TokenCipher, safeEqual } from './crypto/tokenCrypto';
 import { FixedWindowLimiter, makeUserRateLimit } from './lib/userRateLimit';
+import { Metrics } from './lib/metrics';
 
 export interface BuildServerOptions {
   /** Volitelné DB připojení – využije /health pro kontrolu stavu. */
@@ -78,6 +80,12 @@ export async function buildServer(
     'gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=(), browsing-topics=()';
   app.addHook('onRequest', async (_req, reply) => {
     reply.header('Permissions-Policy', PERMISSIONS_POLICY);
+  });
+
+  // --- Metriky (PLAN.md 1.8) – počítadlo requestů; expozice na /metrics níže. ---
+  const metrics = new Metrics();
+  app.addHook('onResponse', async (_req, reply) => {
+    metrics.record(reply.statusCode);
   });
 
   // --- CORS: jen povolený frontend origin (nereflektuje libovolný origin) ---
@@ -173,7 +181,21 @@ export async function buildServer(
 
     await app.register(setupRoutes, { db: opts.db, cipher, notion, apiRateLimit });
     await app.register(tasksRoutes, { db: opts.db, cipher, notion, apiRateLimit });
+    await app.register(accountRoutes, { db: opts.db, env, apiRateLimit });
   }
+
+  // --- Metriky (Prometheus) – chráněné tokenem; vypnuté bez METRICS_TOKEN. ---
+  app.get('/metrics', async (req, reply) => {
+    if (!env.METRICS_TOKEN) {
+      return reply.status(404).send({ error: 'NotFound' });
+    }
+    const auth = req.headers.authorization ?? '';
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!safeEqual(token, env.METRICS_TOKEN)) {
+      return reply.status(401).send({ error: 'Unauthorized' });
+    }
+    return reply.type('text/plain; version=0.0.4').send(metrics.render());
+  });
 
   // --- Health check (rozšířeno v 1.8) ---
   app.get('/health', async () => {

@@ -56,3 +56,8 @@ export function upsertUserByGoogle(db: DB, profile: GoogleProfile, now: number =
 export function getUserById(db: DB, id: string): User | undefined {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as User | undefined;
 }
+
+/** Smaže uživatele. CASCADE odstraní sessions + notion_configs; audit_log se anonymizuje (SET NULL). */
+export function deleteUser(db: DB, id: string): void {
+  db.prepare('DELETE FROM users WHERE id = ?').run(id);
+}
