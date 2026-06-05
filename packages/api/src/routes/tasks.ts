@@ -13,11 +13,14 @@ import type { NotionService } from '../services/notion/service';
 import { normalizeNotionId } from '../services/notion/ids';
 import { handleNotionError } from './notionError';
 import { toJsonSchema, arrayOf } from '../lib/openapi';
+import type { RateLimitPreHandler } from '../lib/userRateLimit';
 
 export interface TasksRoutesOptions {
   db: DB;
   cipher: TokenCipher;
   notion: NotionService;
+  /** Per-user rate limit pro /api/* (úroveň 2; běží po auth). */
+  apiRateLimit: RateLimitPreHandler;
 }
 
 const idParamSchema = {
@@ -27,7 +30,7 @@ const idParamSchema = {
 } as const;
 
 const tasksRoutes: FastifyPluginAsync<TasksRoutesOptions> = async (app, opts) => {
-  const { db, cipher, notion } = opts;
+  const { db, cipher, notion, apiRateLimit } = opts;
 
   /** preHandler: načte (dešifruje) Notion konfiguraci uživatele do req.notionCtx. */
   const loadNotionContext = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
@@ -47,7 +50,8 @@ const tasksRoutes: FastifyPluginAsync<TasksRoutesOptions> = async (app, opts) =>
     req.notionCtx = { userId, token: cfg.token, databaseId: cfg.databaseId };
   };
 
-  const preHandler = [app.authenticate, loadNotionContext];
+  // Pořadí: ověř session → per-user rate limit → načti Notion kontext.
+  const preHandler = [app.authenticate, apiRateLimit, loadNotionContext];
 
   // --- GET /api/tasks (filtrovaný flat list) ---
   app.get(

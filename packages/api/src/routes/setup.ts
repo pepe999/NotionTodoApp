@@ -7,11 +7,14 @@ import { saveNotionConfig } from '../db/notionConfigs';
 import type { NotionService } from '../services/notion/service';
 import { NotionApiError } from '../services/notion/client';
 import { InvalidNotionIdError, parseDatabaseId } from '../services/notion/ids';
+import type { RateLimitPreHandler } from '../lib/userRateLimit';
 
 export interface SetupRoutesOptions {
   db: DB;
   cipher: TokenCipher;
   notion: NotionService;
+  /** Per-user rate limit pro /api/* (úroveň 2; běží po auth). */
+  apiRateLimit: RateLimitPreHandler;
 }
 
 /** Přeloží chyby Notion vrstvy na srozumitelné HTTP odpovědi. Ostatní necháme bublat. */
@@ -42,10 +45,11 @@ function handleNotionError(reply: FastifyReply, err: unknown): void {
 }
 
 const setupRoutes: FastifyPluginAsync<SetupRoutesOptions> = async (app, opts) => {
-  const { db, cipher, notion } = opts;
+  const { db, cipher, notion, apiRateLimit } = opts;
+  const preHandler = [app.authenticate, apiRateLimit];
 
   // --- Validace databáze (bez uložení) ---
-  app.post('/api/setup/validate', { preHandler: app.authenticate }, async (req, reply) => {
+  app.post('/api/setup/validate', { preHandler }, async (req, reply) => {
     const input = setupInputSchema.parse(req.body);
     try {
       const databaseId = parseDatabaseId(input.databaseId);
@@ -57,7 +61,7 @@ const setupRoutes: FastifyPluginAsync<SetupRoutesOptions> = async (app, opts) =>
   });
 
   // --- Validace + uložení zašifrované konfigurace ---
-  app.post('/api/setup/save', { preHandler: app.authenticate }, async (req, reply) => {
+  app.post('/api/setup/save', { preHandler }, async (req, reply) => {
     const input = setupInputSchema.parse(req.body);
     try {
       const databaseId = parseDatabaseId(input.databaseId);
@@ -83,7 +87,7 @@ const setupRoutes: FastifyPluginAsync<SetupRoutesOptions> = async (app, opts) =>
   });
 
   // --- Volitelné: vytvoření nové databáze se správným schématem ---
-  app.post('/api/setup/create-database', { preHandler: app.authenticate }, async (req, reply) => {
+  app.post('/api/setup/create-database', { preHandler }, async (req, reply) => {
     const input = createDatabaseInputSchema.parse(req.body);
     try {
       const databaseId = await notion.createDatabase(input.token, input.parentPageId, input.title);

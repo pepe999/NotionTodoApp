@@ -36,7 +36,7 @@
 ## Přehled fází (checklist)
 
 - [~] **FÁZE 0** – Příprava a infrastruktura _(hotovo: 0.1–0.4 + branch protection na main, 0.5/0.6 splněny STÁVAJÍCÍM serverem, 0.7 deploy secrets `VPS_*`; **ZBÝVÁ: vytvořit Google OAuth client** – viz „Skutečný stav infrastruktury" níže)_
-- [~] **FÁZE 1** – Backend API (Fastify + TypeScript) _(hotovo: 1.1 setup, 1.2 SQLite+AES-GCM, 1.3 Google OAuth+PKCE+sessions+/auth/mobile, 1.4 Notion service + setup endpointy, 1.5 Tasks CRUD + OpenAPI/Swagger)_
+- [~] **FÁZE 1** – Backend API (Fastify + TypeScript) _(hotovo: 1.1 setup, 1.2 SQLite+AES-GCM, 1.3 Google OAuth+PKCE+sessions+/auth/mobile, 1.4 Notion service + setup endpointy, 1.5 Tasks CRUD + OpenAPI/Swagger, 1.6 dvouúrovňový rate limiting + DoS limity)_
 - [ ] **FÁZE 2** – Testy backendu
 - [ ] **FÁZE 3** – Frontend Web (React + Vite)
 - [ ] **FÁZE 4** – Testy frontendu
