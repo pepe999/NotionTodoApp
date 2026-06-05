@@ -96,7 +96,7 @@
 - **Vstup**: Monorepo struktura, Docker soubory
 - **Výstup**: `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`, `.github/workflows/ios-ci.yml` (disabled by default)
 - **Testy/Revize**: Push PR spustí CI (lint + test + build pro api a web); merge do main spustí deploy workflow
-- **Claude Code zadání**: `Vytvoř GitHub Actions ci.yml: spustí se na PR do main/develop, kroky: gitleaks secret scan, checkout, setup Node 20, npm ci, npm run lint, npm audit --audit-level=moderate, npm run test, npm run build. Vytvoř deploy.yml: spustí se na push do main, build Docker images, push na GHCR, SSH deploy na VPS přes appleboy/ssh-action s rollback krokem. Vytvoř ios-ci.yml s workflow_dispatch triggerem (manuální spuštění): macos-latest runner, xcodebuild test.`
+- **Claude Code zadání**: `Vytvoř GitHub Actions ci.yml: spustí se na PR do main/develop, kroky: gitleaks secret scan, checkout, setup Node 20 s cache, npm ci, npm run lint, npm audit --audit-level=moderate, npm run test (s coverage), npm run build, size-limit kontrola bundle. Přidej SAST (CodeQL nebo semgrep), dependency-review action (blokuje PR se zranitelnými deps) a Trivy scan výsledných Docker images (CRITICAL/HIGH fail). Práva workflow: nejmenší nutná (permissions: contents: read), pin actions na commit SHA, concurrency cancel-in-progress. Vytvoř deploy.yml: na push do main – build Docker images, push na GHCR, SSH deploy na VPS přes appleboy/ssh-action s rollback krokem. Vytvoř ios-ci.yml s workflow_dispatch triggerem (manuální): macos-latest runner, xcodebuild test.`
 - **Technologie/nástroje**: GitHub Actions, GHCR, appleboy/ssh-action
 
 ---
@@ -182,8 +182,8 @@
 - **Vstup**: Backend projekt z 1.1
 - **Výstup**: `src/db/index.ts`, `src/db/migrations/001_init.sql`, migrace runner, inicializační skript
 - **Testy/Revize**: `npm run db:migrate` vytvoří SQLite soubor se správnými tabulkami; spuštění znovu je idempotentní
-- **Claude Code zadání**: `Vytvoř src/db/index.ts (inicializace better-sqlite3, WAL mode, foreign keys ON, připojení k souboru z DATABASE_PATH env). Vytvoř src/db/migrations/ runner: čte všechny *.sql soubory seřazené dle čísla, ukládá provedené migrace do schema_migrations tabulky, přeskočí již provedené. Migrace 001_init.sql: tabulky users (id TEXT PK, google_id TEXT UNIQUE, email TEXT UNIQUE, name TEXT, avatar_url TEXT, created_at INTEGER), sessions (id TEXT PK, user_id TEXT FK→users, token_hash TEXT UNIQUE, expires_at INTEGER, created_at INTEGER), notion_configs (id TEXT PK, user_id TEXT UNIQUE FK→users, integration_token_encrypted TEXT, database_id TEXT, validated_at INTEGER, created_at INTEGER, updated_at INTEGER). Přidej AES-256-GCM šifrování Notion tokenu přes Node.js crypto modul s NOTION_ENCRYPTION_KEY env.`
-- **Technologie/nástroje**: better-sqlite3 9.x, Node.js crypto (built-in)
+- **Claude Code zadání**: `Vytvoř src/db/index.ts (inicializace better-sqlite3, WAL mode, foreign keys ON, připojení k souboru z DATABASE_PATH env). Vytvoř src/db/migrations/ runner: čte všechny *.sql soubory seřazené dle čísla, ukládá provedené migrace do schema_migrations tabulky, přeskočí již provedené. Migrace 001_init.sql: tabulky users (id TEXT PK, google_id TEXT UNIQUE, email TEXT UNIQUE, name TEXT, avatar_url TEXT, created_at INTEGER), sessions (id TEXT PK, user_id TEXT FK→users ON DELETE CASCADE, token_hash TEXT UNIQUE, expires_at INTEGER, last_seen_at INTEGER, created_at INTEGER), notion_configs (id TEXT PK, user_id TEXT UNIQUE FK→users ON DELETE CASCADE, integration_token_encrypted TEXT, token_iv TEXT, token_auth_tag TEXT, key_version INTEGER DEFAULT 1, database_id TEXT, validated_at INTEGER, created_at INTEGER, updated_at INTEGER). Přidej indexy: idx_sessions_token_hash, idx_sessions_user_id, idx_sessions_expires_at (pro cleanup), idx_users_google_id. Přidej AES-256-GCM šifrování Notion tokenu přes Node.js crypto: pro každý zápis generuj náhodný 12B IV (NIKDY neopakovat klíč+IV), ukládej IV i 16B auth tag zvlášť, podporuj key_version pro budoucí rotaci klíče. Klíč načti z NOTION_ENCRYPTION_KEY (hex 32B), validuj délku při startu. Přidej periodický cleanup expirovaných sessions (DELETE WHERE expires_at < now) – volaný při startu a node-cron každou hodinu.`
+- **Technologie/nástroje**: better-sqlite3 9.x, Node.js crypto (built-in), node-cron (session cleanup)
 
 ---
 
@@ -194,8 +194,8 @@
 - **Vstup**: Google Cloud Console setup (manuální), SQLite schema z 1.2
 - **Výstup**: Funkční `/auth/google`, `/auth/google/callback`, `/auth/me`, `/auth/logout` endpointy
 - **Testy/Revize**: Přihlášení přes Google funguje; cookie se nastaví; `/auth/me` vrátí uživatele; logout smaže session ze SQLite
-- **Claude Code zadání**: `Implementuj src/plugins/auth.ts: Google OAuth 2.0 redirect flow (bez google-auth-library – použij standardní OAuth2 s fetch pro token exchange a Google Identity API pro userinfo na https://www.googleapis.com/oauth2/v3/userinfo). Vygeneruj JWT (jose library) s expirací 7 dní, ulož session hash do SQLite sessions tabulky. HTTPOnly Secure SameSite=Strict cookie. Přidej middleware pro ověření JWT + kontrolu existence session v SQLite (umožňuje invalidaci). Logout: smaže session z DB, clearCookie. Endpoint /auth/mobile pro iOS Google Sign-In SDK (přijme id_token, vrátí cookie).`
-- **Technologie/nástroje**: jose (JWT), @fastify/cookie, Google Identity API (https://www.googleapis.com/oauth2/v3/userinfo)
+- **Claude Code zadání**: `Implementuj src/plugins/auth.ts: Google OAuth 2.0 Authorization Code flow s PKCE (code_challenge S256) a CSRF state parametrem – state i code_verifier ulož do krátkodobé HTTPOnly cookie (TTL 10 min) a v callbacku striktně ověř shodu (bez google-auth-library – standardní OAuth2 s fetch pro token exchange a Google Identity API pro userinfo na https://www.googleapis.com/oauth2/v3/userinfo). Vygeneruj náhodný opaque session token (32B), do SQLite ulož jen jeho SHA-256 hash (token_hash), do JWT (jose) vlož session id + jti, expirace 7 dní (absolute) + idle timeout 30 dní s prodloužením session při aktivitě. HTTPOnly Secure SameSite=Lax cookie (Lax kvůli OAuth redirectu; Strict by zablokoval cookie při návratu z Google). Cookie scope na vlastní doménu, Path=/. Middleware: ověř JWT (alg whitelist ES256/HS256, NE 'none') + existenci a expiraci session v SQLite (umožňuje okamžitou invalidaci). Logout: smaže session z DB, clearCookie. Endpoint POST /auth/mobile pro iOS: přijme Google id_token, POVINNĚ ověř podpis proti Google JWKS (https://www.googleapis.com/oauth2/v3/certs, cache klíčů), zkontroluj iss (accounts.google.com), aud (== GOOGLE_CLIENT_ID resp. iOS client id), exp, email_verified; teprve pak vystav session cookie. Přidej rotaci session id při (re)loginu.`
+- **Technologie/nástroje**: jose (JWT + JWKS verifikace), @fastify/cookie, Google Identity API (userinfo + certs)
 - **Manuální kroky (Google Cloud Console)**:
   1. Jdi na https://console.cloud.google.com → New Project: `NotionTodoApp`
   2. APIs & Services → Enable APIs → vyhledej **"Google Identity"** a **"People API"** → Enable (pozor: Google+ API je deprecated a zrušené)
@@ -213,8 +213,8 @@
 - **Vstup**: Auth middleware z 1.3
 - **Výstup**: `src/services/notion.ts`, `POST /api/setup/validate`, `POST /api/setup/save`
 - **Testy/Revize**: Validace vrátí chybu pro neexistující sloupce; úspěch pro správnou DB; SSRF ochrana: URL pro Notion API je hardcoded (ne z user inputu)
-- **Claude Code zadání**: `Vytvoř src/services/notion.ts s NotionService třídou: metody validateDatabase(token, dbId) která ověří existenci a typy sloupců: Name=title, Status=select (options: Todo/In Progress/Review/Done), Tags=multi_select, Due=date, Timeline=date, Owner=people, Description=rich_text, DependsOn=relation (self-referencing). Podúkoly jsou nativní Sub-items – dotazuj přes filter {property: "parent_page_id"} nebo pomocí blocks API. getTasks() vrátí flat list + parent_id pro hierarchii, createTask(), updateTask(), deleteTask(), createSubtask(parentId). Implementuj request queue s rate limiting 3 req/s (Notion API limit) a exponential backoff. Všechna volání mají timeout 10s. Endpoint POST /api/setup: přijme token a dbId, zavolá validateDatabase, při úspěchu zašifruje a uloží do notion_configs.`
-- **Technologie/nástroje**: @notionhq/client 2.x, p-queue pro request throttling
+- **Claude Code zadání**: `Vytvoř src/services/notion.ts s NotionService třídou: metody validateDatabase(token, dbId) která ověří existenci a typy sloupců: Name=title, Status=select (options: Todo/In Progress/Review/Done), Tags=multi_select, Due=date, Timeline=date, Owner=people, Description=rich_text, DependsOn=relation (self-referencing). Podúkoly jsou nativní Sub-items – dotazuj přes filter {property: "parent_page_id"} nebo pomocí blocks API. getTasks() vrátí flat list + parent_id pro hierarchii (kompletní stránkování přes start_cursor/has_more, ne jen prvních 100), createTask(), updateTask(), deleteTask(), createSubtask(parentId). Validuj database_id i parent_id jako UUID formát (regex) PŘED použitím v API cestě (ochrana proti path/SSRF injection). Implementuj sdílenou request queue (p-queue concurrency dle rate limitu, ne per-request) s rate limiting ~3 req/s (Notion API limit) a exponential backoff s respektem k Retry-After hlavičce u 429. Reuse HTTP spojení (undici keep-alive agent). Všechna volání mají timeout 10s + AbortController. Přidej server-side per-user cache vrstvu (in-memory LRU, TTL ~20s) pro getTasks – mutace jsou write-through (po úspěšném zápisu invaliduj/aktualizuj cache), čímž se drasticky sníží počet volání Notion při 30s pollingu více klientů. Endpoint POST /api/setup: přijme token a dbId, zavolá validateDatabase, při úspěchu zašifruje a uloží do notion_configs. Přidej volitelný POST /api/setup/create-database: přes Notion API vytvoř novou databázi se správným schématem (8 sloupců) jako rodiče zvolené stránky – sníží friction onboarding.`
+- **Technologie/nástroje**: @notionhq/client 2.x, p-queue pro request throttling, lru-cache, undici (keep-alive)
 
 ---
 
@@ -237,8 +237,8 @@
 - **Vstup**: Fastify projekt z 1.1, auth middleware z 1.3
 - **Výstup**: Rate limiting aktivní na všech routách
 - **Testy/Revize**: Po překročení limitu vrátí 429 s Retry-After hlavičkou
-- **Claude Code zadání**: `Nakonfiguruj @fastify/rate-limit plugin dvakrát: pro /auth/* keyGenerator podle IP (respektuj X-Forwarded-For za Traefikem, max 1 hop), pro /api/* keyGenerator podle req.user.id (dostupný po auth middleware), max 300 req za 60s. Custom errorMessage v JSON formátu s retryAfter hodnotou. Přidaj RateLimit-* headers do response. Při přidání X-Forwarded-For ověř, že se bere jen první IP (ochrana proti IP spoofing).`
-- **Technologie/nástroje**: @fastify/rate-limit
+- **Claude Code zadání**: `Nakonfiguruj @fastify/rate-limit: pro /auth/* keyGenerator podle IP (respektuj X-Forwarded-For za Traefikem, trustProxy s přesným počtem hopů – ber jen klientskou IP, ne spoofovatelnou), pro /api/* keyGenerator podle req.user.id (po auth middleware), max 300 req/60s. POZOR na pořadí: přidej i hrubý IP-based pre-auth limit, který běží PŘED autentizací (chrání /api/* proti záplavě neautentizovaných požadavků dřív, než se vyhodnotí session). Custom errorMessage v JSON s retryAfter. Přidej RateLimit-* a Retry-After headers. Nastav globální Fastify limity: bodyLimit (např. 256KB), connectionTimeout, max délku URL/query, aby se předešlo DoS přes velké payloady. (Pozn.: in-memory store je OK pro 1 instanci; při horizontálním škálování přepni store na Redis.)`
+- **Technologie/nástroje**: @fastify/rate-limit (in-memory; Redis při škálování)
 
 ---
 
@@ -249,8 +249,20 @@
 - **Vstup**: Fastify projekt z 1.1
 - **Výstup**: CORS a security headers aktivní
 - **Testy/Revize**: Request z nepovolené domény vrátí CORS chybu; headers obsahují CSP, HSTS, X-Frame-Options
-- **Claude Code zadání**: `Nakonfiguruj @fastify/cors: origin povoleno pouze pro FRONTEND_URL env proměnnou (v dev http://localhost:5173), credentials: true. Nakonfiguruj @fastify/helmet s CSP politikou (default-src 'self', script-src 'self', style-src 'self' 'unsafe-inline'). Přidej HSTS header pro produkci (Strict-Transport-Security: max-age=63072000). Ověř, že Fastify nevystavuje X-Powered-By header.`
-- **Technologie/nástroje**: @fastify/cors, @fastify/helmet
+- **Claude Code zadání**: `Nakonfiguruj @fastify/cors: origin povoleno pouze pro FRONTEND_URL env (v dev http://localhost:5173), credentials: true, methods whitelist, NE reflektovat libovolný origin. Nakonfiguruj @fastify/helmet (CSP: default-src 'self', script-src 'self', style-src 'self', object-src 'none', frame-ancestors 'none', base-uri 'self'; vyhni se 'unsafe-inline' – Tailwind v4 generuje statické CSS). HSTS pro produkci (max-age=63072000; includeSubDomains; preload). Vypni X-Powered-By, nastav Referrer-Policy a Permissions-Policy. SEPARÁTNÍ CSP nasaď i pro web (nginx security headers v 7.2): connect-src musí povolit API doménu, jinak fetch selže; nastav stejné frame-ancestors/object-src. Ověř výsledek přes securityheaders.com a Mozilla Observatory.`
+- **Technologie/nástroje**: @fastify/cors, @fastify/helmet, nginx security headers (web)
+
+---
+
+### 1.8 GDPR, audit log a observabilita
+
+- **Popis**: Endpointy pro správu osobních dat (právo na výmaz a export dle GDPR), bezpečnostní audit log a základní observabilita (strukturované logy, metriky, graceful shutdown). Doplňuje dříve chybějící „provozní" a „compliance" vrstvu.
+- **Kdo**: `[Claude]`
+- **Vstup**: Auth + DB z 1.2–1.3
+- **Výstup**: `DELETE /api/account`, `GET /api/account/export`, audit log tabulka, `/health` + `/metrics`, graceful shutdown
+- **Testy/Revize**: Výmaz účtu smaže users/sessions/notion_configs/device_tokens (CASCADE); export vrátí JSON se všemi daty uživatele; audit log zaznamená login/logout/setup/delete
+- **Claude Code zadání**: `Přidej DELETE /api/account (smaže uživatele a díky ON DELETE CASCADE i sessions, notion_configs, device_tokens; zruší cookie) a GET /api/account/export (JSON se všemi osobními daty – profil, configy bez plaintext tokenu). Přidej tabulku audit_log (id, user_id, event, ip, user_agent, created_at) do migrace 002 a zaznamenávej bezpečnostní události (login, logout, setup změna, account delete, neúspěšné ověření). Minimalizuj PII v provozních logách (Pino redact emailů). Přidej /health (status, uptime, db check, version) a /metrics (Prometheus přes fastify-metrics – volitelné, chráněné). Implementuj graceful shutdown (SIGTERM → dokonči requesty, zavři DB, vyprázdni Notion frontu).`
+- **Technologie/nástroje**: Fastify hooks, fastify-metrics (volitelné), node:crypto
 
 ---
 
@@ -337,7 +349,7 @@
 - **Vstup**: CRUD API z 1.5
 - **Výstup**: `src/store/taskStore.ts`, `src/hooks/useTasks.ts`, optimistické UI aktualizace
 - **Testy/Revize**: Vytvoření úkolu se okamžitě zobrazí (optimistický update); při chybě se rollbackne; hierarchie rodič/podúkol správně zobrazena
-- **Claude Code zadání**: `Vytvoř Zustand store pro UI state (activeView: kanban|timeline|calendar, openTaskId, filters: {search, tags, status}). Vytvoř React Query hooks: useTasksQuery (refetchInterval: 30000, staleTime: 25000), useCreateTask (optimistický update – onMutate přidá task s temp ID, onError rollback, onSettled invalidate), useUpdateTask, useDeleteTask, useCreateSubtask (přidá child task s parentId). Vytvoř src/api/client.ts (fetch wrapper s credentials: "include", error handling, automatický logout při 401).`
+- **Claude Code zadání**: `Vytvoř Zustand store pro UI state (activeView: kanban|timeline|calendar, openTaskId, filters: {search, tags, status}). Vytvoř React Query hooks: useTasksQuery (jeden zdroj pravdy – kompletní flat list, refetchInterval 30000 ale refetchIntervalInBackground: false a pauza když je tab skrytý/document.hidden, staleTime 25000, refetchOnWindowFocus: true – šetří volání Notion). Hierarchie a počty podúkolů se počítají z tohoto seznamu (žádné per-card dotazy → žádný N+1); detail modal používá select z téhož cache místo samostatného dotazu. useCreateTask/useUpdateTask/useDeleteTask/useCreateSubtask s optimistickým updatem (onMutate snapshot + temp ID, onError rollback, onSettled invalidate). Řeš konflikt s externími úpravami v Notionu: nepřepisuj čerstvá serverová data zastaralou optimistickou mutací (porovnej last_edited_time), při detekci externí změny zobraz nenásilný indikátor „aktualizováno". Vytvoř src/api/client.ts (fetch wrapper s credentials: "include", typové chyby, automatický logout při 401, retry s backoff jen pro idempotentní GET).`
 - **Technologie/nástroje**: Zustand 5.x, TanStack Query 5.x
 
 ---
@@ -349,8 +361,8 @@
 - **Vstup**: Task store z 3.4
 - **Výstup**: `src/views/KanbanView.tsx`, funkční drag & drop s optimistickým přesunem
 - **Testy/Revize**: Přetažení karty aktualizuje status; podúkoly se zobrazí jako badge s počtem na kartě rodiče
-- **Claude Code zadání**: `Vytvoř KanbanView komponentu: 4 sloupce (Todo/In Progress/Review/Done) s @dnd-kit/core a @dnd-kit/sortable. Každá karta (TaskCard) zobrazuje: název, tagy (barevné badges), due date (červená pokud po termínu), avatar ownera, počet podúkolů jako badge (kliknutí otevře detail). Filtruj jen tasks bez parentId pro hlavní view. Drop target zvýrazní sloupec. Po dropu zavolej useUpdateTask s novým statusem. Sloupce mají počítadlo úkolů v headeru. Přidej empty state s CTA tlačítkem "Vytvořit první úkol".`
-- **Technologie/nástroje**: @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities
+- **Claude Code zadání**: `Vytvoř KanbanView komponentu: 4 sloupce (Todo/In Progress/Review/Done) s @dnd-kit/core a @dnd-kit/sortable. Každá karta (TaskCard) zobrazuje: název, tagy (barevné badges), due date (červená pokud po termínu), avatar ownera, počet podúkolů jako badge (kliknutí otevře detail). Filtruj jen tasks bez parentId pro hlavní view. Drop target zvýrazní sloupec. Po dropu zavolej useUpdateTask s novým statusem. Sloupce mají počítadlo úkolů v headeru. Přidej empty state s CTA tlačítkem "Vytvořit první úkol". Výkon: TaskCard zabal do React.memo (stabilní props), pro dlouhé sloupce (>50 karet) použij virtualizaci (@tanstack/react-virtual). Přístupnost D&D: zapni @dnd-kit KeyboardSensor + screen-reader announcements (announcements/aria-live), respektuj prefers-reduced-motion. Po dropu okamžitý optimistický přesun, při chybě rollback + toast.`
+- **Technologie/nástroje**: @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities, @tanstack/react-virtual
 
 ---
 
@@ -414,6 +426,30 @@
 
 ---
 
+### 3.11 Globální UX systémy: notifikace, undo, offline/error feedback
+
+- **Popis**: Sjednocená vrstva zpětné vazby pro celou appku – toast notifikace pro úspěch/chybu, undo u destruktivních akcí, banner při výpadku API/offline, globální loading. Dosud chyběla; bez ní působí optimistické updaty „tiše" a chyby nejsou srozumitelné.
+- **Kdo**: `[Claude]`
+- **Vstup**: API hooks z 3.4
+- **Výstup**: `src/components/Toaster`, `src/components/OfflineBanner`, undo pattern u mazání
+- **Testy/Revize**: Úspěšná akce zobrazí toast; mazání nabídne „Vrátit zpět" (5s) než se potvrdí; výpadek API zobrazí banner s retry; dvojklik na submit neodešle 2×
+- **Claude Code zadání**: `Přidej toast systém (sonner) napojený na React Query mutace: success/error toasty s lokalizovanými, akčními zprávami (ne raw error). U useDeleteTask implementuj optimistické odstranění s undo (toast s tlačítkem „Vrátit zpět", potvrzení mazání až po vypršení / zrušení). Přidej OfflineBanner: detekuj navigator.onLine + selhání fetch (network error) a 5xx, zobraz nenásilný banner s tlačítkem „Zkusit znovu". Tlačítka odesílající mutace blokuj během pending (zamezit dvojodeslání). Volitelně command palette (cmdk) pro rychlé akce/přepínání pohledů.`
+- **Technologie/nástroje**: sonner, TanStack Query, cmdk (volitelné)
+
+---
+
+### 3.12 Přístupnost (a11y), motivy a lokalizace času/jazyka
+
+- **Popis**: Splnění WCAG 2.1 AA, focus management v modálech, dark mode s persistencí, konzistentní práce s časovými pásmy a příprava na lokalizaci. Sjednocuje a rozšiřuje a11y/UX požadavky roztroušené v 8.3.
+- **Kdo**: `[Claude]`
+- **Vstup**: Komponenty z 3.1–3.10
+- **Výstup**: a11y utilities, theme provider, datum/čas helpery
+- **Testy/Revize**: Modály mají focus trap a vrací focus; vše ovladatelné klávesnicí; kontrast statusových barev ≥ 4.5:1; dark/light dle systému + přepínač s persistencí; termíny se zobrazují konzistentně bez chyb o ±1 den
+- **Claude Code zadání**: `Zajisti a11y: focus trap + návrat focusu u Dialogů (Shadcn/Radix to umí – ověř), viditelný focus ring, aria-label na ikon-only tlačítkách, role/aria u kanban sloupců a karet, aria-live pro toasty a stav D&D, respektuj prefers-reduced-motion. Ověř barevný kontrast statusů (≥4.5:1). Theme: ThemeProvider s light/dark/system, persistence do localStorage, respekt prefers-color-scheme, Tailwind dark: třídy. Čas: jednotně ukládej/posílej ISO 8601, zobrazuj v lokálním TZ uživatele (date-fns-tz), pozor na date-only (Due) vs datetime – žádné posuny o den kvůli UTC. Připrav i18n strukturu (i18next nebo jen centralizovaný slovník) i kdyby výchozí jazyk byl jen čeština. Mobilní web: definuj breakpointy – pokud je web desktop-first, explicitně to uveď a zajisti aspoň použitelný layout na tabletu (kanban horizontální scroll).`
+- **Technologie/nástroje**: Radix/Shadcn focus management, date-fns-tz, i18next (příprava), Tailwind dark mode
+
+---
+
 ## FÁZE 4: Testy frontendu
 
 ### 4.1 Unit testy komponent (Vitest + Testing Library)
@@ -449,6 +485,18 @@
 - **Testy/Revize**: Při změně UI komponenty test selže a zobrazí diff screenshot
 - **Claude Code zadání**: `Přidej Playwright visual regression testy pomocí expect(page).toHaveScreenshot(): snímky pro KanbanView (prázdný stav, s úkoly), TaskDetailModal, CalendarView. Nastav threshold 0.2% pro pixel diff (vyšší tolerance kvůli font rendering rozdílům mezi OS). Přidej --update-snapshots flag do npm skriptu. V CI spouštěj na linux/chromium pro konzistentní výsledky.`
 - **Technologie/nástroje**: Playwright toHaveScreenshot()
+
+---
+
+### 4.4 Accessibility, kontraktní a regresní testy
+
+- **Popis**: Automatizované a11y testy, kontraktní testy proti Notion API a regresní brány (bundle size, výkon) v CI – uzavírají mezery v testovací strategii.
+- **Kdo**: `[Claude]`
+- **Vstup**: Testy z 4.1–4.3, UX z 3.11–3.12
+- **Výstup**: axe testy, Notion contract testy, CI gates
+- **Testy/Revize**: axe nehlásí kritické porušení na klíčových stránkách; kontraktní test selže při změně tvaru Notion odpovědi; PR selže při překročení bundle rozpočtu
+- **Claude Code zadání**: `Přidej a11y testy: @axe-core/playwright na LoginPage, SetupPage, DashboardPage (Kanban) a TaskDetailModal – fail na kritických/serious porušeních. Kontraktní testy NotionService proti uloženým fixturám (zachytí mapping regrese) + volitelný opt-in „live" smoke test proti reálnému Notion API (gated env var, mimo běžné CI) pro včasné odhalení breaking changes. Přidej do CI brány: size-limit (bundle), volitelně Lighthouse CI budget. Zaveď test data factory pro snížení duplicit v testech. Pro flaky D&D E2E použij stabilní data-testid a retries. Volitelně Stryker mutation testing pro kritický kód (crypto, auth).`
+- **Technologie/nástroje**: @axe-core/playwright, msw, size-limit, Stryker (volitelné)
 
 ---
 
@@ -547,9 +595,9 @@
 - **Vstup**: Apple Developer Account
 - **Výstup**: Registrace APNs, backend endpoint pro odeslání notifikace, scheduler
 - **Testy/Revize**: Testovací notifikace dorazí na zařízení
-- **Claude Code zadání**: `V iOS app: requestAuthorization pro notifikace, registrace pro remote notifications, odeslání device tokenu na backend POST /api/notifications/register. V backendu: přidej tabulku device_tokens (id, user_id, token, platform, created_at) do SQLite migrace 002, node-apn pro odesílání, node-cron každou hodinu kontrolující tasks z Notion API s due date za 24h a odesílající APNs notifikaci.`
+- **Claude Code zadání**: `V iOS app: requestAuthorization pro notifikace, registrace pro remote notifications, odeslání device tokenu na backend POST /api/notifications/register. V backendu: přidej tabulku device_tokens (id, user_id, token, platform, created_at) do SQLite migrace 002 (token UNIQUE), odesílání přes APNs HTTP/2 s token-based auth (.p8, JWT ES256) – preferuj udržovanou knihovnu (@parse/node-apn) nebo přímý HTTP/2 klient (původní node-apn je málo udržovaný). node-cron každou hodinu kontroluje tasks z Notion API s due date za 24h a odesílá notifikaci; při 410 odpovědi smaž neplatný device token; dedup přes last_notified_at, aby se neposílala duplicitní notifikace pro stejný task/termín.`
 - **Manuální kroky**: V Apple Developer Portal vytvoř APNs klíč (.p8 soubor) a přidej ho jako GitHub Secret `APNS_KEY`
-- **Technologie/nástroje**: UserNotifications framework, node-apn, node-cron
+- **Technologie/nástroje**: UserNotifications framework, @parse/node-apn (APNs HTTP/2, token auth), node-cron
 
 ---
 
@@ -622,7 +670,7 @@
 - **Vstup**: Staging prostředí běžící na VPS
 - **Výstup**: Penetrační test report
 - **Testy/Revize**: Žádná kritická zranitelnost nenalezena
-- **Claude Code zadání**: `Vytvoř penetration-testing-checklist.md: seznam testů pro: SQL injection přes API parametry (better-sqlite3 prepared statements – ověř), XSS přes task název/popis (Notion API escapuje, React escapuje – ale ověř), CSRF (SameSite=Strict cookie + Origin header validace), brute force (rate limiting na /auth/* – ověř), JWT manipulation (změna alg na none – jose knihovna to blokuje – ověř), IDOR (přístup k úkolům jiného uživatele přes notion_config user_id check), open redirect v OAuth flow (state parametr validace), SSRF (hardcoded Notion API URL).`
+- **Claude Code zadání**: `Vytvoř penetration-testing-checklist.md: seznam testů pro: SQL injection přes API parametry (better-sqlite3 prepared statements – ověř), XSS přes task název/popis (Notion API escapuje, React escapuje – ale ověř), CSRF (SameSite=Strict cookie + Origin header validace), brute force (rate limiting na /auth/* – ověř), JWT manipulation (změna alg na none – jose knihovna to blokuje – ověř), IDOR (přístup k úkolům jiného uživatele přes notion_config user_id check), open redirect v OAuth flow (state parametr validace), SSRF (hardcoded Notion API URL + UUID validace dbId). Doplň: TLS konfigurace (testssl.sh / Mozilla Observatory), scan security headers (securityheaders.com), ověření cookie flagů (HttpOnly/Secure/SameSite) v reálné odpovědi, kontrola, že /metrics a Traefik dashboard nejsou veřejně přístupné.`
 - **Technologie/nástroje**: Burp Suite Community, curl, OWASP ZAP
 
 ---
@@ -650,8 +698,8 @@
 - **Vstup**: Aplikační kód z Fází 1–3
 - **Výstup**: `packages/api/Dockerfile`, `packages/web/Dockerfile` (multi-stage)
 - **Testy/Revize**: `docker build` projde; výsledný image < 150MB; container běží jako non-root uživatel
-- **Claude Code zadání**: `Vytvoř multi-stage Dockerfile pro api: stage 1 (node:20-alpine AS builder) npm ci + tsup build, stage 2 (node:20-alpine) zkopíruj jen dist/ a node_modules --production, non-root user "app" (uid 1001), HEALTHCHECK curl /health. Pro web: stage 1 npm ci + vite build, stage 2 (nginx:alpine) zkopíruj dist/, nginx.conf s SPA fallback (try_files $uri /index.html), gzip kompresí a cache headers pro statické soubory. Oba Dockerfiles: minimální .dockerignore.`
-- **Technologie/nástroje**: Docker multi-stage, nginx:alpine
+- **Claude Code zadání**: `Vytvoř multi-stage Dockerfile pro api: stage 1 (node:20-alpine AS builder) npm ci + tsup build, stage 2 (node:20-alpine) zkopíruj jen dist/ a node_modules --omit=dev, non-root user "app" (uid 1001), HEALTHCHECK curl /health, dumb-init/tini jako PID 1. Pro web: stage 1 npm ci + vite build, stage 2 (nginx:alpine) zkopíruj dist/, nginx.conf s SPA fallback (try_files $uri /index.html), gzip+brotli kompresí, cache headers pro hashované statické soubory (immutable, 1 rok) a no-cache pro index.html, security headers + web CSP (connect-src API doména, frame-ancestors 'none'). Oba Dockerfiles: minimální .dockerignore, pin base image přes digest. V docker-compose pro produkci přidej hardening: read_only root fs s tmpfs pro /tmp, cap_drop: ALL, security_opt no-new-privileges, mem/cpu limity, restart: unless-stopped, samostatný named volume jen pro /data (SQLite).`
+- **Technologie/nástroje**: Docker multi-stage, nginx:alpine, tini/dumb-init
 
 ---
 
@@ -729,8 +777,82 @@
 - **Kdo**: `[Claude]`
 - **Vstup**: Produkční nebo staging prostředí
 - **Výstup**: Lighthouse report > 90, API latence < 200ms
-- **Claude Code zadání**: `Spusť Lighthouse CI audit (přidej do CI jako volitelný krok). Zkontroluj: bundle size (vite-bundle-visualizer – žádný chunk > 500KB), lazy loading pro Timeline a Calendar view (React.lazy + Suspense – již v 3.6, 3.7), API response caching headers, gzip komprese v nginx, SQLite WAL mode aktivní, Notion API queue throttling (3 req/s), p95 latence < 200ms.`
-- **Technologie/nástroje**: Lighthouse CI, vite-bundle-visualizer
+- **Claude Code zadání**: `Spusť Lighthouse CI audit (přidej do CI s rozpočty – size-limit/bundlesize jako gate, žádný chunk > 500KB). Zkontroluj: lazy loading pro Timeline/Calendar (3.6, 3.7), API caching headers, gzip+brotli v nginx, SQLite WAL aktivní + indexy využity (EXPLAIN QUERY PLAN), Notion queue throttling a write-through cache (1.4). Rozliš dva latence rozpočty: lokální/cache-hit endpointy p95 < 200ms; endpointy závislé na Notion API mají vlastní rozpočet (Notion sám má latenci ~300–800ms) – proto se měří hlavně účinnost cache (cache-hit ratio) a chování fronty při burstu. Přidej load test (k6 nebo autocannon): ověř, že při souběhu klientů fronta drží 3 req/s, 429 se správně retryuje s backoff a server neeskaluje volání na Notion.`
+- **Technologie/nástroje**: Lighthouse CI, vite-bundle-visualizer, size-limit, k6/autocannon
+
+---
+
+## Revize plánu (3 iterace × 4 oblasti)
+
+> Tato sekce dokumentuje kompletní revizi plánu ze čtyř pohledů – **Security**, **Výkon a efektivita kódu**, **Testy**, **UX/UI** – provedenou ve třech iteracích. Každá iterace jde hlouběji: 1) zjevné mezery, 2) hlubší/architektonické problémy, 3) jemné/pokročilé detaily. U každého zjištění je odkaz na úkol, kam byla oprava zapracována.
+
+### A) Security
+
+**Iterace 1 – zjevné mezery**
+- OAuth flow neměl v implementačním úkolu **PKCE ani validaci `state`** (byly jen v rizicích). → zapracováno do **1.3**.
+- iOS endpoint `/auth/mobile` přijímal `id_token` bez ověření. Doplněna **povinná verifikace podpisu proti Google JWKS** (iss/aud/exp/email_verified). → **1.3**.
+- AES-256-GCM bez explicitního ukládání **IV a auth tagu** (GCM vyžaduje unikátní IV na zápis). → **1.2** (sloupce `token_iv`, `token_auth_tag`).
+
+**Iterace 2 – hlubší/architektonické**
+- `SameSite=Strict` by rozbil návrat z OAuth redirectu → změna na **`SameSite=Lax`** s odůvodněním. → **1.3**.
+- Session token: ukládat jen **SHA-256 hash opaque tokenu**, JWT s alg whitelistem (NE `none`). → **1.3**.
+- Rate limiting: **pořadí vůči auth** – přidán hrubý IP pre-auth limit pro `/api/*` + `bodyLimit`/timeouty proti DoS. → **1.6**.
+- **SSRF/path injection**: validace `database_id`/`parent_id` jako UUID před vložením do API cesty. → **1.4**.
+- Chyběla **web (nginx) CSP** s `connect-src` na API doménu (API CSP nestačí). → **1.7**, **7.2**.
+- Chyběly **GDPR endpointy** (výmaz/export) a **audit log**. → nová **1.8**.
+
+**Iterace 3 – jemné/pokročilé**
+- **Idle + absolute timeout** a rotace session id při loginu. → **1.3**.
+- **Rotace šifrovacího klíče** (`key_version`) + cleanup expirovaných sessions. → **1.2**.
+- **Supply-chain & container hardening**: CodeQL/semgrep, dependency-review, Trivy scan, pin actions na SHA, `read_only` fs, `cap_drop: ALL`, `no-new-privileges`, limity. → **0.4**, **7.2**.
+- Rozšířen **pentest checklist** o TLS test, security-headers scan, ověření cookie flagů (doplněno k **6.4** níže v textu úkolu).
+
+### B) Výkon a efektivita kódu
+
+**Iterace 1 – zjevné mezery**
+- `getTasks` bez **stránkování** (Notion vrací max 100/stránku) a bez serverové cache → při 30s pollingu více klientů by narazil na 3 req/s. Přidána **server-side per-user LRU cache (write-through)** + plné stránkování. → **1.4**.
+- **N+1** u podúkolů: jeden flat list jako zdroj pravdy, počty/hierarchie počítané klientsky, detail čte z téže cache. → **3.4**, **3.8**.
+
+**Iterace 2 – hlubší/architektonické**
+- React Query **polling pauzuje na skrytém tabu** + `refetchOnWindowFocus` (méně volání Notion). → **3.4**.
+- **Virtualizace** dlouhých kanban sloupců + `React.memo` na kartách. → **3.5**.
+- **Indexy** v SQLite (sessions/users) + WAL + prepared statements. → **1.2**.
+
+**Iterace 3 – jemné/pokročilé**
+- **HTTP keep-alive** (undici) na Notion, AbortController timeouty, respekt k `Retry-After`. → **1.4**.
+- **brotli + immutable cache** pro statiku, `tini` jako PID 1, multi-stage `--omit=dev`. → **7.2**.
+- Realistické **latence rozpočty** (cache-hit vs Notion-bound) + **load test (k6)** chování fronty při burstu. → **8.4**.
+
+### C) Testy
+
+**Iterace 1 – zjevné mezery**
+- Doplněny testy **crypto round-tripu s unikátním IV**, session invalidace, JWT `alg=none` blokace (rozšíření **2.1**, ověřeno v **6.4**).
+- **Kontraktní testy** proti Notion fixturám + opt-in live smoke test (breaking changes). → **4.4**.
+
+**Iterace 2 – hlubší/architektonické**
+- **a11y testy** (axe) v CI, **test data factory**, stabilní `data-testid` a retries pro flaky D&D. → **4.4**, **4.2**.
+- Explicitní testy **optimistický rollback**, **401 auto-logout**, rate-limit/CORS/headers (integration). → **2.2**, **4.1**.
+
+**Iterace 3 – jemné/pokročilé**
+- **Regresní brány v CI**: size-limit (bundle), Lighthouse budget, container scan. → **4.4**, **0.4**, **8.4**.
+- **Load/stress test** fronty (429/backoff), volitelně **mutation testing (Stryker)** pro crypto/auth. → **8.4**, **4.4**.
+- iOS: testy přechodu **offline↔online** a Keychain (rozšíření **5.10**).
+
+### D) UX / UI
+
+**Iterace 1 – zjevné mezery**
+- Chyběl **globální systém zpětné vazby** (toasty pro success/error). → nová **3.11**.
+- Chyběl **focus management** v modálech a explicitní WCAG AA cíl. → nová **3.12**.
+
+**Iterace 2 – hlubší/architektonické**
+- **Undo** u mazání, **offline/error banner** s retry, blokace dvojodeslání. → **3.11**.
+- **D&D přístupnost** (klávesnice + screen-reader announcements), `prefers-reduced-motion`. → **3.5**, **3.12**.
+- **Konflikt s externí úpravou** v Notionu – nenásilný indikátor „aktualizováno". → **3.4**.
+
+**Iterace 3 – jemné/pokročilé**
+- **Onboarding**: volitelné automatické vytvoření Notion databáze se správným schématem. → **1.4**.
+- **Časová pásma** (date-only Due vs datetime, date-fns-tz, žádné posuny o den), **i18n** příprava, **dark/system theme** s persistencí. → **3.12**.
+- **Mobilní/tablet** breakpointy / explicitní desktop-first rozhodnutí, command palette (volitelně). → **3.12**, **3.11**.
 
 ---
 
@@ -776,7 +898,10 @@
 
 | Riziko | Pravděpodobnost | Dopad | Mitigace |
 |--------|-----------------|-------|----------|
-| Notion API rate limiting (3 req/s) | Vysoká | Střední | p-queue s throttlingem 3 req/s + exponential backoff; cache responses 30s v React Query |
+| Notion API rate limiting (3 req/s) | Vysoká | Střední | Sdílená p-queue 3 req/s + backoff s respektem k Retry-After; **server-side per-user cache (TTL ~20s, write-through)** výrazně snižuje počet volání; React Query polling pauzuje na skrytém tabu (viz 1.4, 3.4) |
+| Externí úprava úkolu v Notionu během pollingu | Střední | Střední | Detekce konfliktu přes last_edited_time, nepřepisovat čerstvá data zastaralou mutací, indikátor „aktualizováno" (viz 3.4) |
+| Nedostatečná přístupnost (a11y) / právní riziko | Střední | Střední | WCAG AA cíl, automatické axe testy v CI, focus management, kontrast (viz 3.12, 4.4) |
+| Slabý onboarding (ruční tvorba Notion DB) | Střední | Střední | Volitelné automatické vytvoření databáze přes Notion API s korektním schématem (viz 1.4) |
 | Google OAuth credentials expired/revoked | Nízká | Vysoký | Monitoring platnosti, upozornění přes email |
 | SQLite concurrency issues při mnoha uživatelích | Střední | Střední | WAL mode, better-sqlite3 je synchronní (jen jedno vlákno), zvažuj migraci na PostgreSQL při škálování |
 | iOS App Store review zamítnutí | Střední | Vysoký | Dodržuj HIG guidelines, testuj na reálném zařízení před odesláním, připrav review notes |
