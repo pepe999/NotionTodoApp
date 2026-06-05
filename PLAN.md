@@ -36,7 +36,7 @@
 ## Přehled fází (checklist)
 
 - [~] **FÁZE 0** – Příprava a infrastruktura _(scaffolding hotový: 0.1–0.4, 0.6 konfig; čeká na uživatele: 0.5 VPS, 0.7 Secrets, doména pro 0.6)_
-- [~] **FÁZE 1** – Backend API (Fastify + TypeScript) _(hotovo: 1.1 setup+env+server, 1.2 SQLite schema+migrace+AES-GCM)_
+- [~] **FÁZE 1** – Backend API (Fastify + TypeScript) _(hotovo: 1.1 setup, 1.2 SQLite+AES-GCM, 1.3 Google OAuth+PKCE+sessions+/auth/mobile)_
 - [ ] **FÁZE 2** – Testy backendu
 - [ ] **FÁZE 3** – Frontend Web (React + Vite)
 - [ ] **FÁZE 4** – Testy frontendu

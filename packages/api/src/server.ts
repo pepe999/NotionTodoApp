@@ -9,6 +9,7 @@ import { ZodError } from 'zod';
 import type { Env } from './env';
 import { buildLoggerOptions } from './logger';
 import type { DB } from './db/index';
+import authPlugin from './plugins/auth';
 
 export interface BuildServerOptions {
   /** Volitelné DB připojení – využije /health pro kontrolu stavu. */
@@ -73,6 +74,11 @@ export async function buildServer(env: Env, opts: BuildServerOptions = {}): Prom
       },
     });
     await app.register(swaggerUi, { routePrefix: '/docs' });
+  }
+
+  // --- Auth (OAuth, sessions, /auth/*) – vyžaduje DB ---
+  if (opts.db) {
+    await app.register(authPlugin, { db: opts.db, env });
   }
 
   // --- Sanitizovaný error handler (žádný stack trace v produkci) ---
