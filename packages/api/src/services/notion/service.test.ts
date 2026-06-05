@@ -107,4 +107,49 @@ describe('NotionService', () => {
     const service = makeService(fetchMock as unknown as typeof fetch);
     await expect(service.validateDatabase('bad', DB_ID)).rejects.toMatchObject({ status: 401 });
   });
+
+  it('createDatabase vytvoří DB a doplní self-relaci (2 volání)', async () => {
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ id: DB_ID })) // POST /databases
+      .mockResolvedValueOnce(jsonResponse({ ok: true })); // PATCH /databases/{id}
+    const service = makeService(fetchMock as unknown as typeof fetch);
+
+    const id = await service.createDatabase('tok', DB_ID, 'Tasks');
+    expect(id).toBe('274d8f1e-2a3b-4c5d-6e7f-8091a2b3c4d5');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const calls = fetchMock.mock.calls as unknown as Array<[string, { method: string }]>;
+    expect(calls[0]?.[0]).toBe('https://api.notion.com/v1/databases');
+    expect(calls[0]?.[1].method).toBe('POST');
+    expect(calls[1]?.[1].method).toBe('PATCH');
+  });
+
+  it('updateTask a deleteTask invalidují cache', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(pageFixture('p1', 'X')));
+    const service = makeService(fetchMock as unknown as typeof fetch);
+    await service.updateTask(ctx, DB_ID, { status: 'Done' });
+    await service.deleteTask(ctx, DB_ID);
+    const calls = fetchMock.mock.calls as unknown as Array<[string, { method: string }]>;
+    const patchCalls = calls.filter((c) => c[1].method === 'PATCH');
+    expect(patchCalls.length).toBe(2); // update + archivace
+  });
+});
+
+describe('NotionClient – 429 retry', () => {
+  it('opakuje při 429 (respektuje Retry-After) a pak uspěje', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn();
+    fetchMock
+      .mockResolvedValueOnce(new Response('{}', { status: 429, headers: { 'retry-after': '0' } }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+    const client = new NotionClient({
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      queue: new RateLimitQueue({ concurrency: 1, minIntervalMs: 0 }),
+    });
+    const promise = client.request<{ ok: boolean }>('t', 'GET', '/x');
+    await vi.advanceTimersByTimeAsync(700); // překlene backoff
+    await expect(promise).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
 });

@@ -37,7 +37,7 @@
 
 - [~] **FÁZE 0** – Příprava a infrastruktura _(hotovo: 0.1–0.4 + branch protection na main, 0.5/0.6 splněny STÁVAJÍCÍM serverem, 0.7 deploy secrets `VPS_*`; **ZBÝVÁ: vytvořit Google OAuth client** – viz „Skutečný stav infrastruktury" níže)_
 - [x] **FÁZE 1** – Backend API (Fastify + TypeScript) _(KOMPLETNÍ: 1.1 setup, 1.2 SQLite+AES-GCM, 1.3 Google OAuth+PKCE+sessions+/auth/mobile, 1.4 Notion service + setup, 1.5 Tasks CRUD + OpenAPI/Swagger, 1.6 dvouúrovňový rate limiting, 1.7 CORS + security headers, 1.8 GDPR výmaz/export + audit log + /metrics + graceful shutdown)_
-- [ ] **FÁZE 2** – Testy backendu
+- [x] **FÁZE 2** – Testy backendu _(unit + integrace + E2E přes reálný socket; coverage ~91 % stmts / 81 % branches, prahy 80 % vynucené v CI; 137 testů)_
 - [ ] **FÁZE 3** – Frontend Web (React + Vite)
 - [ ] **FÁZE 4** – Testy frontendu
 - [ ] **FÁZE 5** – iOS (SwiftUI)
