@@ -1,0 +1,15 @@
+**/node_modules
+**/dist
+**/build
+**/coverage
+.git
+.github
+.env
+.env.*
+data
+logs
+*.log
+*.sqlite*
+packages/ios
+playwright-report
+test-results

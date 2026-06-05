@@ -1,0 +1,17 @@
+# Dev image pro frontend (Vite dev server, hot-reload přes bind mount).
+# Produkční multi-stage build (nginx) vznikne ve Fázi 7.2.
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/web/package.json ./packages/web/
+COPY packages/api/package.json ./packages/api/
+RUN npm install
+
+COPY . .
+
+EXPOSE 5173
+# Vite musí naslouchat na 0.0.0.0, aby byl dostupný z hostitele (nastaveno ve 3.1).
+CMD ["npm", "run", "dev:web"]

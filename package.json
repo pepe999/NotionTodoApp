@@ -1,0 +1,37 @@
+{
+  "name": "notiontodoapp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Notion-backed todo app (Kanban / Timeline / Calendar) – web + iOS",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/api",
+    "packages/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev --workspace @notiontodoapp/api --if-present",
+    "dev:web": "npm run dev --workspace @notiontodoapp/web --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "concurrently": "^9.1.2",
+    "eslint": "^9.18.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.21.0"
+  }
+}
