@@ -1,0 +1,30 @@
+@import 'tailwindcss';
+
+/* Dark mode řízené třídou .dark na <html> (PLAN.md 3.12). */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Poppins', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Respektuj prefers-reduced-motion (PLAN.md 3.5/3.12). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
