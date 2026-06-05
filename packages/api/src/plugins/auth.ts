@@ -21,6 +21,7 @@ import {
   clearCookieOptions,
 } from '../auth/cookies';
 import { safeEqual } from '../crypto/tokenCrypto';
+import { recordAudit } from '../db/auditLog';
 
 export interface AuthPluginOptions {
   db: DB;
@@ -47,7 +48,9 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
   // --- Start OAuth (redirect na Google) ---
   app.get('/auth/google', async (_req, reply) => {
     if (!isGoogleConfigured(env)) {
-      reply.status(501).send({ error: 'NotConfigured', message: 'Google OAuth není nakonfigurováno.' });
+      reply
+        .status(501)
+        .send({ error: 'NotConfigured', message: 'Google OAuth není nakonfigurováno.' });
       return;
     }
     const state = base64url(randomBytes(16));
@@ -106,9 +109,16 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
     try {
       const tokens = await exchangeCodeForTokens(env, query.code, stored.codeVerifier);
       const profile = await fetchGoogleUserInfo(tokens.access_token);
-      await establishSession(db, env, reply, profile);
+      const user = await establishSession(db, env, reply, profile);
+      recordAudit(db, {
+        userId: user.id,
+        event: 'login',
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
     } catch (err) {
       req.log.error({ err }, 'OAuth callback selhal');
+      recordAudit(db, { event: 'auth_failed', ip: req.ip, userAgent: req.headers['user-agent'] });
       reply.status(502).send({ error: 'OAuthExchangeFailed', message: 'Přihlášení selhalo.' });
       return;
     }
@@ -117,8 +127,8 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
 
   // --- iOS: výměna ověřeného Google id_token za session cookie ---
   app.post('/auth/mobile', async (req, reply) => {
-    const audiences = [env.GOOGLE_IOS_CLIENT_ID, env.GOOGLE_CLIENT_ID].filter(
-      (a): a is string => Boolean(a),
+    const audiences = [env.GOOGLE_IOS_CLIENT_ID, env.GOOGLE_CLIENT_ID].filter((a): a is string =>
+      Boolean(a),
     );
     if (audiences.length === 0) {
       reply.status(501).send({ error: 'NotConfigured', message: 'Google client ID chybí.' });
@@ -133,9 +143,16 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
     try {
       const profile = await verifyGoogleIdToken(body.id_token, { audiences });
       const user = await establishSession(db, env, reply, profile);
+      recordAudit(db, {
+        userId: user.id,
+        event: 'login',
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
       return reply.send(user);
     } catch (err) {
       req.log.warn({ err }, 'Neplatný Google id_token');
+      recordAudit(db, { event: 'auth_failed', ip: req.ip, userAgent: req.headers['user-agent'] });
       reply.status(401).send({ error: 'InvalidToken', message: 'Neplatný id_token.' });
       return;
     }
@@ -147,6 +164,14 @@ const authPlugin: FastifyPluginAsync<AuthPluginOptions> = async (app, opts) => {
   // --- Logout (smaže session i bez platného cookie idempotentně) ---
   app.post('/auth/logout', async (req, reply) => {
     const resolved = await resolveSession(db, env, req.cookies[SESSION_COOKIE]);
+    if (resolved) {
+      recordAudit(db, {
+        userId: resolved.user.id,
+        event: 'logout',
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
     revokeSessionCookie(db, env, reply, resolved?.session.id);
     return reply.send({ ok: true });
   });

@@ -4,6 +4,7 @@ import { setupInputSchema, createDatabaseInputSchema } from '@notiontodoapp/shar
 import type { DB } from '../db/index';
 import type { TokenCipher } from '../crypto/tokenCrypto';
 import { saveNotionConfig } from '../db/notionConfigs';
+import { recordAudit } from '../db/auditLog';
 import type { NotionService } from '../services/notion/service';
 import { NotionApiError } from '../services/notion/client';
 import { InvalidNotionIdError, parseDatabaseId } from '../services/notion/ids';
@@ -80,6 +81,12 @@ const setupRoutes: FastifyPluginAsync<SetupRoutesOptions> = async (app, opts) =>
         { userId: req.user!.id, token: input.token, databaseId, validatedAt: now },
         now,
       );
+      recordAudit(db, {
+        userId: req.user!.id,
+        event: 'setup_save',
+        ip: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
       return reply.send({ ok: true, databaseId, validatedAt: now });
     } catch (err) {
       return handleNotionError(reply, err);
