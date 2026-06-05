@@ -55,6 +55,18 @@ export type CreateTaskInput = z.infer<typeof createTaskInputSchema>;
 export const updateTaskInputSchema = createTaskInputSchema.partial();
 export type UpdateTaskInput = z.infer<typeof updateTaskInputSchema>;
 
+/**
+ * Query parametry pro `GET /api/tasks`. Filtrace probíhá server-side nad
+ * cachovaným seznamem. `tags` je čárkami oddělený seznam (AND sémantika).
+ */
+export const taskQuerySchema = z.object({
+  search: z.string().optional(),
+  status: taskStatusSchema.optional(),
+  tags: z.string().optional(),
+  parentId: z.string().optional(),
+});
+export type TaskQuery = z.infer<typeof taskQuerySchema>;
+
 // --- Setup wizard (Notion integrace) ---
 
 /** Vstup pro validaci/uložení Notion konfigurace. `databaseId` smí být i URL. */

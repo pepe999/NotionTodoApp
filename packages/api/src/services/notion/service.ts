@@ -72,6 +72,13 @@ export class NotionService {
     return tasks;
   }
 
+  /** Načte jeden úkol podle ID (Notion stránka). */
+  async getTask(ctx: NotionContext, taskId: string): Promise<Task> {
+    const id = normalizeNotionId(taskId);
+    const page = await this.client.request<NotionPage>(ctx.token, 'GET', `/pages/${id}`);
+    return mapPageToTask(page);
+  }
+
   /** Vytvoří úkol; write-through invaliduje cache. */
   async createTask(ctx: NotionContext, input: CreateTaskInput): Promise<Task> {
     const id = normalizeNotionId(ctx.databaseId);
