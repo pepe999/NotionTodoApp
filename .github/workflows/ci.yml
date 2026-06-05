@@ -77,6 +77,11 @@ jobs:
     name: Dependency review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Dependency review API funguje na privátním repu jen s GitHub Advanced
+    # Security. Bez něj akce padá hned na startu, proto je job zatím
+    # NEBLOKUJÍCÍ (informativní). Po pořízení GHAS odeber continue-on-error,
+    # čímž se bezpečnostní brána opět vynutí (viz PLAN.md 0.4 / 6.2).
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4

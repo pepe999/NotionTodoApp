@@ -10,15 +10,25 @@ import type { Env } from './env';
 import { buildLoggerOptions } from './logger';
 import type { DB } from './db/index';
 import authPlugin from './plugins/auth';
+import setupRoutes from './routes/setup';
+import { NotionService } from './services/notion/service';
+import { TokenCipher } from './crypto/tokenCrypto';
 
 export interface BuildServerOptions {
   /** Volitelné DB připojení – využije /health pro kontrolu stavu. */
   db?: DB;
+  /** Injektovatelná Notion služba (testy); jinak se vytvoří sdílený singleton. */
+  notion?: NotionService;
+  /** Injektovatelná šifra tokenu (testy); jinak z NOTION_ENCRYPTION_KEY. */
+  cipher?: TokenCipher;
 }
 
 const MAX_BODY_BYTES = 256 * 1024; // ochrana proti DoS přes velké payloady (PLAN.md 1.6)
 
-export async function buildServer(env: Env, opts: BuildServerOptions = {}): Promise<FastifyInstance> {
+export async function buildServer(
+  env: Env,
+  opts: BuildServerOptions = {},
+): Promise<FastifyInstance> {
   const app = Fastify({
     logger: buildLoggerOptions(env),
     trustProxy: true, // za Traefikem – respektuj X-Forwarded-* (rate limiting v 1.6)
@@ -76,12 +86,8 @@ export async function buildServer(env: Env, opts: BuildServerOptions = {}): Prom
     await app.register(swaggerUi, { routePrefix: '/docs' });
   }
 
-  // --- Auth (OAuth, sessions, /auth/*) – vyžaduje DB ---
-  if (opts.db) {
-    await app.register(authPlugin, { db: opts.db, env });
-  }
-
   // --- Sanitizovaný error handler (žádný stack trace v produkci) ---
+  // Registrace MUSÍ být před routami, aby se na ně tento handler aplikoval.
   app.setErrorHandler((err: FastifyError, req, reply) => {
     req.log.error({ err }, 'request error');
 
@@ -101,6 +107,14 @@ export async function buildServer(env: Env, opts: BuildServerOptions = {}): Prom
       message: exposeMessage ? err.message : 'Interní chyba serveru.',
     });
   });
+
+  // --- Auth (OAuth, sessions, /auth/*) + Notion setup – vyžaduje DB ---
+  if (opts.db) {
+    await app.register(authPlugin, { db: opts.db, env });
+    const cipher = opts.cipher ?? new TokenCipher(env.NOTION_ENCRYPTION_KEY);
+    const notion = opts.notion ?? new NotionService();
+    await app.register(setupRoutes, { db: opts.db, cipher, notion });
+  }
 
   // --- Health check (rozšířeno v 1.8) ---
   app.get('/health', async () => {
