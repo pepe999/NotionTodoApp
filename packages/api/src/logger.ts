@@ -16,6 +16,10 @@ export function buildLoggerOptions(env: Env): NonNullable<FastifyServerOptions['
     'body.integration_token',
     '*.integration_token',
     '*.integration_token_encrypted',
+    // Minimalizace PII v provozních logách (PLAN.md 1.8).
+    '*.email',
+    'body.email',
+    'body.id_token',
   ];
 
   if (env.NODE_ENV === 'test') {
@@ -26,7 +30,12 @@ export function buildLoggerOptions(env: Env): NonNullable<FastifyServerOptions['
     level: env.NODE_ENV === 'production' ? 'info' : 'debug',
     redact: { paths: redactPaths, censor: '[REDACTED]' },
     ...(env.NODE_ENV === 'development'
-      ? { transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:HH:MM:ss' } } }
+      ? {
+          transport: {
+            target: 'pino-pretty',
+            options: { colorize: true, translateTime: 'SYS:HH:MM:ss' },
+          },
+        }
       : {}),
   };
 }

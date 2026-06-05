@@ -32,6 +32,9 @@ export const envSchema = z.object({
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(120), // per IP, /auth/*
   RATE_LIMIT_API_IP_MAX: z.coerce.number().int().positive().default(600), // per IP, pre-auth flood guard
   RATE_LIMIT_API_USER_MAX: z.coerce.number().int().positive().default(300), // per user ID, /api/*
+
+  // Observabilita (PLAN.md 1.8). /metrics je vypnuté, dokud není token nastaven.
+  METRICS_TOKEN: z.string().min(16).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
