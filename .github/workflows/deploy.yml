@@ -40,19 +40,19 @@ jobs:
           script: |
             set -euo pipefail
             APP_DIR=/opt/apps/notion-todo-app
+            COMPOSE="docker compose -f docker-compose.prod.yml"
             cd "$APP_DIR"
             PREV=$(git rev-parse HEAD)
             echo "Předchozí commit: $PREV"
             git fetch --all --prune
             git reset --hard origin/main
-            docker compose build
-            docker compose up -d
+            $COMPOSE up -d --build
             sleep 20
             # API není publikované na host (běží za Traefik) – health check uvnitř kontejneru.
-            if ! docker compose exec -T api wget -qO- http://localhost:3000/health >/dev/null 2>&1; then
+            if ! $COMPOSE exec -T api curl -fsS http://localhost:3000/health >/dev/null 2>&1; then
               echo "Health check SELHAL – rollback na $PREV"
               git reset --hard "$PREV"
-              docker compose up -d --build
+              $COMPOSE up -d --build
               exit 1
             fi
             echo "Deploy OK: $(git rev-parse HEAD)"
