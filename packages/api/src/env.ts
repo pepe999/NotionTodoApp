@@ -35,6 +35,18 @@ export const envSchema = z.object({
 
   // Observabilita (PLAN.md 1.8). /metrics je vypnuté, dokud není token nastaven.
   METRICS_TOKEN: z.string().min(16).optional(),
+
+  // APNs push (PLAN.md 5.8) – vše volitelné; push je vypnutý, dokud není kompletní.
+  APNS_TEAM_ID: z.string().optional(),
+  APNS_KEY_ID: z.string().optional(),
+  APNS_BUNDLE_ID: z.string().optional(),
+  /** Obsah .p8 klíče (PKCS#8 PEM). V produkci přes secret, ne soubor v repu. */
+  APNS_PRIVATE_KEY: z.string().optional(),
+  /** Použít sandbox APNs (api.sandbox.push.apple.com). */
+  APNS_SANDBOX: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 export type Env = z.infer<typeof envSchema>;

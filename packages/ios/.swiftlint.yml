@@ -1,0 +1,30 @@
+# SwiftLint konfigurace pro iOS klienta (PLAN.md 5.1).
+disabled_rules:
+  - todo
+  - trailing_comma
+
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - first_where
+
+line_length:
+  warning: 120
+  error: 160
+
+type_body_length:
+  warning: 350
+
+file_length:
+  warning: 500
+
+identifier_name:
+  min_length: 2
+  excluded:
+    - id
+    - x
+    - y
+
+excluded:
+  - DerivedData
+  - .build

@@ -40,7 +40,7 @@
 - [x] **FÁZE 2** – Testy backendu _(unit + integrace + E2E přes reálný socket; coverage ~91 % stmts / 81 % branches, prahy 80 % vynucené v CI; 137 testů)_
 - [x] **FÁZE 3** – Frontend Web (React + Vite) _(KOMPLETNÍ: 3.1 setup Vite/Tailwind v4/shadcn-style UI, 3.2 auth, 3.3 setup wizard, 3.4 Zustand+React Query optimistic, 3.5 Kanban dnd-kit, 3.6 Timeline/Gantt, 3.7 Calendar, 3.8 detail modal, 3.9 search/filtry, 3.10 klávesové zkratky, 3.11 toasty+undo+offline, 3.12 a11y/dark mode/i18n základ)_
 - [x] **FÁZE 4** – Testy frontendu _(4.1 unit/komponenty Vitest+Testing Library, coverage gate 70 % v CI, 66 testů; 4.2 Playwright E2E + 4.3 visual + 4.4 axe a11y authored, route-mock; 4.4 kontraktní test NotionService proti fixturám + size-limit bundle gate)_
-- [ ] **FÁZE 5** – iOS (SwiftUI)
+- [~] **FÁZE 5** – iOS (SwiftUI) _(kód hotový: 5.1 MVVM struktura+SwiftLint, 5.2 APIClient actor, 5.3 Google Sign-In+Keychain, 5.4 Kanban, 5.5 Timeline/Canvas, 5.6 Calendar, 5.7 detail+podúkoly, 5.8 push: iOS registrace + backend device_tokens/APNs/scheduler. **Nutno ověřit v Xcode** – nešlo zkompilovat v CI; backend část 5.8 otestována)_
 - [ ] **FÁZE 6** – Bezpečnostní audit
 - [ ] **FÁZE 7** – Nasazení
 - [ ] **FÁZE 8** – Finální revize
