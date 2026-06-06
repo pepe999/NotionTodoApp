@@ -12,6 +12,7 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       'packages/ios/**',
+      'scripts/load-test.js', // k6 runtime (vlastní globály __ENV apod.)
     ],
   },
   js.configs.recommended,
