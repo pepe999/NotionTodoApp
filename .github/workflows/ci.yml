@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v4
       # Sken zranitelností závislostí + náhodných secrets. Misconfig sken
       # Dockerfiles se přidá ve Fázi 7.2 (dev image záměrně běží jako root).
-      - uses: aquasecurity/trivy-action@0.35.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,secret
