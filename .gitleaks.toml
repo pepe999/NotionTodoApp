@@ -1,0 +1,23 @@
+# gitleaks konfigurace (PLAN.md 6.3). Rozšiřuje výchozí pravidla o allowlist
+# pro testovací/ukázkové hodnoty, které nejsou reálná tajemství.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Testovací a ukázkové hodnoty"
+paths = [
+  '''\.env\.example''',
+  '''.*\.test\.ts''',
+  '''.*\.test\.tsx''',
+  '''.*/__fixtures__/.*''',
+  '''packages/ios/README\.md''',
+  '''docs/.*''',
+]
+regexes = [
+  # Opakované znaky v testech: 'x'.repeat(40), 'a'.repeat(64) apod.
+  '''['"][a-z]['"]\.repeat\(\d+\)''',
+  # Zástupné secret_ hodnoty v testech/wizardu.
+  '''secret_(t|abc|x|save|plaintext)\b''',
+  # Placeholder tokeny v testech.
+  '''(devtok|test-token|tok1)''',
+]

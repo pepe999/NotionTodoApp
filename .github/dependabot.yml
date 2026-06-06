@@ -1,0 +1,26 @@
+# Automatické aktualizace závislostí (PLAN.md 6.2).
+version: 2
+updates:
+  # npm (monorepo – detekuje workspaces z kořenového package.json).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # Patch/minor sluč do jednoho PR, ať nezahltí review.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - dependencies
+
+  # GitHub Actions (pinování/aktualizace verzí akcí).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels:
+      - dependencies
+      - ci
