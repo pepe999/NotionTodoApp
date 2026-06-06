@@ -1,0 +1,63 @@
+# Produkční compose (PLAN.md 7.2). Spouští se na serveru:
+#   docker compose -f docker-compose.prod.yml up -d --build
+# Vyžaduje běžící sdílený Traefik (externí síť `traefik-public`) a .env s
+# DOMAIN, API_DOMAIN a aplikačními tajemstvími.
+services:
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    image: notiontodoapp-api:prod
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_PATH: /data/app.sqlite
+      FRONTEND_URL: https://${DOMAIN}
+    volumes:
+      - sqlite-data:/data
+    networks:
+      - traefik-public
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.nta-api.rule=Host(`${API_DOMAIN}`)
+      - traefik.http.routers.nta-api.entrypoints=websecure
+      - traefik.http.routers.nta-api.tls.certresolver=letsencrypt
+      - traefik.http.services.nta-api.loadbalancer.server.port=3000
+
+  web:
+    build:
+      context: .
+      dockerfile: packages/web/Dockerfile
+    image: notiontodoapp-web:prod
+    environment:
+      API_ORIGIN: https://${API_DOMAIN}
+    networks:
+      - traefik-public
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.nta-web.rule=Host(`${DOMAIN}`)
+      - traefik.http.routers.nta-web.entrypoints=websecure
+      - traefik.http.routers.nta-web.tls.certresolver=letsencrypt
+      - traefik.http.services.nta-web.loadbalancer.server.port=80
+
+networks:
+  traefik-public:
+    external: true
+
+volumes:
+  sqlite-data:

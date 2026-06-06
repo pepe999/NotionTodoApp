@@ -1,9 +1,9 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { openDb, type DB } from './index';
+import type { DB } from './index';
 
-const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'migrations');
+export const MIGRATIONS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'migrations');
 
 /**
  * Spustí čekající SQL migrace seřazené dle názvu. Idempotentní –
@@ -42,21 +42,4 @@ export function runMigrations(db: DB, dir: string = MIGRATIONS_DIR): string[] {
   }
 
   return ran;
-}
-
-// CLI: `npm run db:migrate`
-const invokedDirectly =
-  process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
-
-if (invokedDirectly) {
-  // Lazy import, ať testy netriggerují validaci env.
-  const { loadEnv } = await import('../env');
-  const env = loadEnv();
-  const db = openDb(env.DATABASE_PATH);
-  try {
-    const ran = runMigrations(db);
-    console.log(ran.length ? `✅ Aplikováno: ${ran.join(', ')}` : '✅ Žádné čekající migrace.');
-  } finally {
-    db.close();
-  }
 }

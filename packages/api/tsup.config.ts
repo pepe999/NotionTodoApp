@@ -10,7 +10,12 @@ export default defineConfig({
   outDir: 'dist',
   clean: true,
   sourcemap: true,
+  // Workspace balíček @notiontodoapp/shared se bundluje DOVNITŘ (jeho `main`
+  // míří na TS zdroj, který by `node dist/index.js` neuměl načíst). Ostatní
+  // závislosti (vč. nativního better-sqlite3) zůstávají externí a instalují se
+  // v runtime image přes `npm ci --omit=dev` / `npm prune`.
+  noExternal: ['@notiontodoapp/shared'],
   // SQL migrace nejsou součástí JS bundlu – runtime je čte z dist/migrations
   // (cesta dirname(import.meta.url)/migrations). Build běží na Linuxu (CI/Docker).
-  onSuccess: 'cp -r src/db/migrations dist/migrations',
+  onSuccess: 'rm -rf dist/migrations && cp -r src/db/migrations dist/migrations',
 });

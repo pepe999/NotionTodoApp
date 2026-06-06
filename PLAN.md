@@ -42,7 +42,7 @@
 - [x] **FÁZE 4** – Testy frontendu _(4.1 unit/komponenty Vitest+Testing Library, coverage gate 70 % v CI, 66 testů; 4.2 Playwright E2E + 4.3 visual + 4.4 axe a11y authored, route-mock; 4.4 kontraktní test NotionService proti fixturám + size-limit bundle gate)_
 - [~] **FÁZE 5** – iOS (SwiftUI) _(kód hotový: 5.1 MVVM struktura+SwiftLint, 5.2 APIClient actor, 5.3 Google Sign-In+Keychain, 5.4 Kanban, 5.5 Timeline/Canvas, 5.6 Calendar, 5.7 detail+podúkoly, 5.8 push: iOS registrace + backend device_tokens/APNs/scheduler. **Nutno ověřit v Xcode** – nešlo zkompilovat v CI; backend část 5.8 otestována)_
 - [x] **FÁZE 6** – Bezpečnostní audit _(6.1 OWASP Top 10 review → docs/security-report.md: 0 kritických/vysokých; 6.2 npm audit 0 zranitelností + Dependabot; 6.3 secret scan čistý + .gitleaks.toml; 6.4 docs/penetration-testing-checklist.md)_
-- [ ] **FÁZE 7** – Nasazení
+- [~] **FÁZE 7** – Nasazení _(artefakty hotové: 7.2 produkční Dockerfiles api+web(nginx)+docker-compose.prod.yml (Traefik labels, hardening), 7.3 deploy.yml na prod compose, 7.4 monitoring + 7.5 backup skript, docs/deployment.md. Opraveny 3 prod chyby (shared bundling, migrate CLI, nesting migrací). **ZBÝVÁ na uživateli: DNS, .env na serveru, první `docker compose up`, zapnout push trigger**)_
 - [ ] **FÁZE 8** – Finální revize
 
 ---
