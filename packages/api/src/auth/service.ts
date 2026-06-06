@@ -37,7 +37,11 @@ export async function establishSession(
     { sid: session.sid, jti: session.rawToken },
     session.absoluteExpiry,
   );
-  reply.setCookie(SESSION_COOKIE, jwt, sessionCookieOptions(env, session.absoluteExpiry - Date.now()));
+  reply.setCookie(
+    SESSION_COOKIE,
+    jwt,
+    sessionCookieOptions(env, session.absoluteExpiry - Date.now()),
+  );
   return toAuthedUser(user);
 }
 

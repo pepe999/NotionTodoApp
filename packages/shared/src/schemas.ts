@@ -67,6 +67,13 @@ export const taskQuerySchema = z.object({
 });
 export type TaskQuery = z.infer<typeof taskQuerySchema>;
 
+/** Registrace device tokenu pro push notifikace (PLAN.md 5.8). */
+export const deviceTokenRegisterSchema = z.object({
+  token: z.string().min(1).max(512),
+  platform: z.enum(['ios']).default('ios'),
+});
+export type DeviceTokenRegister = z.infer<typeof deviceTokenRegisterSchema>;
+
 // --- Setup wizard (Notion integrace) ---
 
 /** Vstup pro validaci/uložení Notion konfigurace. `databaseId` smí být i URL. */

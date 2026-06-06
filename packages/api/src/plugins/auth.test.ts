@@ -36,7 +36,11 @@ async function setup(extra: Record<string, string> = {}) {
 async function authCookie(database: DB, env: Env): Promise<string> {
   const user = upsertUserByGoogle(database, { sub: 'g1', email: 'a@b.cz', name: 'A' });
   const session = createSession(database, user.id);
-  return signSessionJwt(env.JWT_SECRET, { sid: session.sid, jti: session.rawToken }, session.absoluteExpiry);
+  return signSessionJwt(
+    env.JWT_SECRET,
+    { sid: session.sid, jti: session.rawToken },
+    session.absoluteExpiry,
+  );
 }
 
 describe('auth routes', () => {

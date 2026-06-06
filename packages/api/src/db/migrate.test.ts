@@ -30,9 +30,12 @@ describe('runMigrations', () => {
 
   it('vynucuje foreign key CASCADE (smazání usera smaže session)', () => {
     runMigrations(db);
-    db.prepare(
-      'INSERT INTO users (id, google_id, email, created_at) VALUES (?, ?, ?, ?)',
-    ).run('u1', 'g1', 'a@b.cz', Date.now());
+    db.prepare('INSERT INTO users (id, google_id, email, created_at) VALUES (?, ?, ?, ?)').run(
+      'u1',
+      'g1',
+      'a@b.cz',
+      Date.now(),
+    );
     db.prepare(
       'INSERT INTO sessions (id, user_id, token_hash, expires_at, last_seen_at, created_at) VALUES (?, ?, ?, ?, ?, ?)',
     ).run('s1', 'u1', 'h1', Date.now() + 1000, Date.now(), Date.now());

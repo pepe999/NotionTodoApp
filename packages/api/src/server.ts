@@ -13,6 +13,7 @@ import authPlugin from './plugins/auth';
 import setupRoutes from './routes/setup';
 import tasksRoutes from './routes/tasks';
 import accountRoutes from './routes/account';
+import notificationsRoutes from './routes/notifications';
 import { NotionService } from './services/notion/service';
 import { TokenCipher, safeEqual } from './crypto/tokenCrypto';
 import { FixedWindowLimiter, makeUserRateLimit } from './lib/userRateLimit';
@@ -182,6 +183,7 @@ export async function buildServer(
     await app.register(setupRoutes, { db: opts.db, cipher, notion, apiRateLimit });
     await app.register(tasksRoutes, { db: opts.db, cipher, notion, apiRateLimit });
     await app.register(accountRoutes, { db: opts.db, env, apiRateLimit });
+    await app.register(notificationsRoutes, { db: opts.db, apiRateLimit });
   }
 
   // --- Metriky (Prometheus) – chráněné tokenem; vypnuté bez METRICS_TOKEN. ---
