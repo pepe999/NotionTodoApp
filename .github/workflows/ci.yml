@@ -42,8 +42,9 @@ jobs:
       - run: npm run lint
       - run: npm audit --audit-level=moderate
       - run: npm run typecheck
-      - run: npm run test:coverage # vynucuje coverage prahy (80 %)
+      - run: npm run test:coverage # vynucuje coverage prahy (api 80 %, web 70 %)
       - run: npm run build
+      - run: npm run size --workspace @notiontodoapp/web # bundle rozpočet (PLAN.md 4.4)
 
   codeql:
     name: CodeQL (SAST)

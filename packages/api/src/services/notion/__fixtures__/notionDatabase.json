@@ -1,0 +1,25 @@
+{
+  "object": "database",
+  "id": "274d8f1e-2a3b-4c5d-6e7f-8091a2b3c4d5",
+  "properties": {
+    "Name": { "id": "title", "type": "title", "title": {} },
+    "Status": {
+      "id": "status",
+      "type": "select",
+      "select": {
+        "options": [
+          { "name": "Todo", "color": "default" },
+          { "name": "In Progress", "color": "blue" },
+          { "name": "Review", "color": "yellow" },
+          { "name": "Done", "color": "green" }
+        ]
+      }
+    },
+    "Tags": { "id": "tags", "type": "multi_select", "multi_select": { "options": [] } },
+    "Due": { "id": "due", "type": "date", "date": {} },
+    "Timeline": { "id": "tl", "type": "date", "date": {} },
+    "Owner": { "id": "owner", "type": "people", "people": {} },
+    "Description": { "id": "desc", "type": "rich_text", "rich_text": {} },
+    "DependsOn": { "id": "dep", "type": "relation", "relation": {} }
+  }
+}
