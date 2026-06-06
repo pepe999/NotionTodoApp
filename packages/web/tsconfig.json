@@ -4,7 +4,11 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] },
+    "noEmit": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"]
 }
