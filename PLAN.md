@@ -43,7 +43,7 @@
 - [~] **FÁZE 5** – iOS (SwiftUI) _(kód hotový: 5.1 MVVM struktura+SwiftLint, 5.2 APIClient actor, 5.3 Google Sign-In+Keychain, 5.4 Kanban, 5.5 Timeline/Canvas, 5.6 Calendar, 5.7 detail+podúkoly, 5.8 push: iOS registrace + backend device_tokens/APNs/scheduler. **Nutno ověřit v Xcode** – nešlo zkompilovat v CI; backend část 5.8 otestována)_
 - [x] **FÁZE 6** – Bezpečnostní audit _(6.1 OWASP Top 10 review → docs/security-report.md: 0 kritických/vysokých; 6.2 npm audit 0 zranitelností + Dependabot; 6.3 secret scan čistý + .gitleaks.toml; 6.4 docs/penetration-testing-checklist.md)_
 - [~] **FÁZE 7** – Nasazení _(artefakty hotové: 7.2 produkční Dockerfiles api+web(nginx)+docker-compose.prod.yml (Traefik labels, hardening), 7.3 deploy.yml na prod compose, 7.4 monitoring + 7.5 backup skript, docs/deployment.md. Opraveny 3 prod chyby (shared bundling, migrate CLI, nesting migrací). **ZBÝVÁ na uživateli: DNS, .env na serveru, první `docker compose up`, zapnout push trigger**)_
-- [ ] **FÁZE 8** – Finální revize
+- [x] **FÁZE 8** – Finální revize _(8.1 senior, 8.2 security signoff, 8.3 UX, 8.4 performance → docs/final-review.md; ověřeno: indexy využity (EXPLAIN), lazy chunky, bundle ~146 kB brotli, k6 load test scripts/load-test.js)_
 
 ---
 
