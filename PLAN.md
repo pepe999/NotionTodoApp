@@ -531,7 +531,7 @@
 
 ### 3.13 Todo list view _(doplněno 2026-06-11 na žádost uživatele)_
 
-- **Popis**: Čtvrtý pohled vedle Kanbanu, Timeline a Kalendáře – klasický todo list ve stylu iOS Připomínek. Checkbox = status (zaškrtnuto ⇔ Done), řazení podle termínu (bez termínu na konec), volba „Skrýt hotové", podúkoly odsazené pod rodičem, dokončené v samostatné sekci dole.
+- **Popis**: Čtvrtý pohled vedle Kanbanu, Timeline a Kalendáře – klasický todo list ve stylu iOS Připomínek. Checkbox = status (zaškrtnuto ⇔ Done), řazení podle termínu (bez termínu na konec), volba „Skrýt hotové", podúkoly odsazené pod rodičem, dokončené v samostatné sekci dole. Na konci seznamu **rychlé přidání úkolu** (řádek „+ Přidat úkol…", Enter vytvoří task jen s názvem, input se vyčistí pro další zadání; doplněno 2026-06-11).
 - **Kdo**: `[Claude]`
 - **Vstup**: Task store z 3.4
 - **Výstup**: `src/views/TodoListView.tsx` (lazy load), klávesová zkratka `4`, položka v navigaci; iOS ekvivalent `Views/TodoListView.swift` (List + kroužky jako Připomínky, „Skrýt hotové" přes @AppStorage, 4. položka segmented pickeru v DashboardView)

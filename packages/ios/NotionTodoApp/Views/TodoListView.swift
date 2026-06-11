@@ -12,6 +12,10 @@ struct TodoListView: View {
     /// Persistuje přes restarty appky i přepínání pohledů (UserDefaults).
     @AppStorage("todoHideDone") private var hideDone = false
 
+    /// Rychlé přidání úkolu na konci seznamu (Enter vytvoří task, fokus zůstává).
+    @State private var quickAddText = ""
+    @FocusState private var quickAddFocused: Bool
+
     var body: some View {
         if store.tasks.isEmpty {
             VStack(spacing: 16) {
@@ -32,6 +36,7 @@ struct TodoListView: View {
                     ForEach(activeRoots) { task in
                         rowWithChildren(task)
                     }
+                    quickAddRow
                 }
 
                 if !doneRoots.isEmpty {
@@ -94,6 +99,29 @@ struct TodoListView: View {
 
     private func visibleChildren(of id: String) -> [TaskItem] {
         children(of: id).filter { !(hideDone && $0.status == .done) }
+    }
+
+    // MARK: - Rychlé přidání
+
+    private var quickAddRow: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "plus.circle")
+                .font(.title3)
+                .foregroundStyle(Color.secondary)
+            TextField("Přidat úkol…", text: $quickAddText)
+                .focused($quickAddFocused)
+                .submitLabel(.done)
+                .onSubmit { submitQuickAdd() }
+                .accessibilityLabel("Rychlé přidání úkolu")
+        }
+    }
+
+    private func submitQuickAdd() {
+        let name = quickAddText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        quickAddText = ""
+        quickAddFocused = true // klávesnice zůstává pro rychlé zadání dalšího úkolu
+        Task { await store.create(.init(name: name)) }
     }
 
     // MARK: - Řádky
