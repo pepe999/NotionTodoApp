@@ -147,7 +147,9 @@ export function KanbanView() {
       onDragEnd={onDragEnd}
       onDragCancel={() => setActiveId(null)}
     >
-      <div className="flex gap-4 overflow-x-auto p-4">
+      {/* min-h-full: board vyplní celou výšku <main>, takže horizontální (touch)
+          scroll funguje na celé ploše, ne jen v pruhu s kartami (mobil). */}
+      <div className="flex min-h-full gap-4 overflow-x-auto p-4">
         {STATUS_ORDER.map((s) => (
           <Column
             key={s}

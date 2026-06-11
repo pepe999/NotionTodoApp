@@ -1047,12 +1047,13 @@
 
 ### Shrnutí follow-upů do kódu (plán je opraven, kód zatím ne)
 
-| # | Soubor | Změna |
-|---|--------|-------|
-| 11 | `packages/api/src/services/notion/service.ts` | `TASKS_CACHE_TTL_MS` 20 s → 35 s (nebo SWR) |
-| 17 | `packages/web/src/pages/SetupPage.tsx`, `packages/ios/.../SetupView.swift` | placeholder/nápověda: `ntn_` i `secret_` prefix |
-| 1 | server `authorized_keys` | forced command pro `github_deploy` klíč *(manuální, uživatel)* |
-| 6 | `packages/api` migrace/cron | retence audit_logu (>90 dní) |
+| # | Soubor | Změna | Stav |
+|---|--------|-------|------|
+| 11 | `packages/api/src/services/notion/service.ts` | `TASKS_CACHE_TTL_MS` 20 s → 35 s (nebo SWR) | ✅ hotovo |
+| 17 | `packages/web/src/pages/SetupPage.tsx`, `packages/ios/.../SetupView.swift` | placeholder/nápověda: `ntn_` i `secret_` prefix | ✅ hotovo |
+| 1 | server `authorized_keys` | forced command pro `github_deploy` klíč *(manuální, uživatel)* | ⬜ čeká na uživatele |
+| 6 | `packages/api/src/db/auditLog.ts` | retence audit_logu (90 dní, hodinový cleanup jako u sessions) | ✅ hotovo |
+| – | `packages/web/src/views/KanbanView.tsx` | mobilní UX: board vyplní celou výšku, horizontální scroll funguje na celé ploše (`min-h-full`) | ✅ hotovo |
 
 ---
 

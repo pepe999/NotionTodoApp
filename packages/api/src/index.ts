@@ -3,6 +3,7 @@ import { buildServer } from './server';
 import { openDb } from './db/index';
 import { runMigrations } from './db/migrate';
 import { startSessionCleanup } from './db/sessions';
+import { startAuditLogCleanup } from './db/auditLog';
 import { TokenCipher } from './crypto/tokenCrypto';
 import { NotionService } from './services/notion/service';
 import { getApnsConfig } from './apns/token';
@@ -13,6 +14,7 @@ const env = loadEnv();
 const db = openDb(env.DATABASE_PATH);
 runMigrations(db);
 const stopCleanup = startSessionCleanup(db);
+const stopAuditCleanup = startAuditLogCleanup(db);
 
 // APNs scheduler (PLAN.md 5.8) – jen pokud je APNs kompletně nakonfigurováno.
 let stopNotifications: (() => void) | undefined;
@@ -39,6 +41,7 @@ for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     void (async () => {
       app.log.info(`Přijat ${signal}, ukončuji…`);
       stopCleanup();
+      stopAuditCleanup();
       stopNotifications?.();
       await app.close();
       db.close();

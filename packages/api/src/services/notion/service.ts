@@ -15,7 +15,9 @@ import {
   type RetrievedDatabase,
 } from './schema';
 
-const TASKS_CACHE_TTL_MS = 20_000;
+// TTL musí být ≥ pollovací interval klienta (30 s, viz web 3.4) – kratší TTL by
+// znamenalo cache-miss při každém pollu jediného klienta (revize PLAN.md 2026-06-11).
+const TASKS_CACHE_TTL_MS = 35_000;
 const QUERY_PAGE_SIZE = 100;
 
 /** Kontext jednoho uživatele (jeho Notion token + databáze). */
