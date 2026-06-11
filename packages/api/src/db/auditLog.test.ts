@@ -2,7 +2,12 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { openDb, type DB } from './index';
 import { runMigrations } from './migrate';
 import { upsertUserByGoogle, deleteUser } from './users';
-import { recordAudit, getAuditLogForUser } from './auditLog';
+import {
+  recordAudit,
+  getAuditLogForUser,
+  cleanupOldAuditLogs,
+  AUDIT_RETENTION_MS,
+} from './auditLog';
 
 let db: DB | undefined;
 
@@ -48,5 +53,16 @@ describe('auditLog', () => {
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.user_id).toBeNull(); // anonymizováno
     expect(remaining[0]?.event).toBe('account_delete');
+  });
+
+  it('retence smaže záznamy starší 90 dní, novější ponechá', () => {
+    const { db: database, userId } = freshUser();
+    const now = Date.now();
+    recordAudit(database, { userId, event: 'login' }, now - AUDIT_RETENTION_MS - 1000);
+    recordAudit(database, { userId, event: 'logout' }, now - 1000);
+
+    const removed = cleanupOldAuditLogs(database, now);
+    expect(removed).toBe(1);
+    expect(getAuditLogForUser(database, userId).map((r) => r.event)).toEqual(['logout']);
   });
 });

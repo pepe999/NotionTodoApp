@@ -46,3 +46,25 @@ export function getAuditLogForUser(db: DB, userId: string): AuditRow[] {
     .prepare('SELECT * FROM audit_log WHERE user_id = ? ORDER BY created_at DESC')
     .all(userId) as AuditRow[];
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Retence audit logu – obsahuje PII (IP, user-agent), viz revize PLAN.md 2026-06-11. */
+export const AUDIT_RETENTION_MS = 90 * DAY_MS;
+
+/** Smaže audit záznamy starší než retence. Vrací počet odstraněných. */
+export function cleanupOldAuditLogs(db: DB, now: number = Date.now()): number {
+  return db.prepare('DELETE FROM audit_log WHERE created_at < ?').run(now - AUDIT_RETENTION_MS)
+    .changes;
+}
+
+/**
+ * Periodický úklid audit logu (výchozí: každou hodinu, stejně jako sessions).
+ * Timer je `unref`-ovaný, aby neblokoval ukončení procesu. Vrací stop funkci.
+ */
+export function startAuditLogCleanup(db: DB, intervalMs: number = 60 * 60 * 1000): () => void {
+  cleanupOldAuditLogs(db);
+  const timer = setInterval(() => cleanupOldAuditLogs(db), intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}

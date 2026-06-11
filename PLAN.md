@@ -43,7 +43,7 @@
 - [~] **FÁZE 5** – iOS (SwiftUI) _(kód hotový: 5.1 MVVM struktura+SwiftLint, 5.2 APIClient actor, 5.3 Google Sign-In+Keychain, 5.4 Kanban, 5.5 Timeline/Canvas, 5.6 Calendar, 5.7 detail+podúkoly, 5.8 push: iOS registrace + backend device_tokens/APNs/scheduler. **Nutno ověřit v Xcode** – nešlo zkompilovat v CI; backend část 5.8 otestována)_
 - [x] **FÁZE 6** – Bezpečnostní audit _(6.1 OWASP Top 10 review → docs/security-report.md: 0 kritických/vysokých; 6.2 npm audit 0 zranitelností + Dependabot; 6.3 secret scan čistý + .gitleaks.toml; 6.4 docs/penetration-testing-checklist.md)_
 - [~] **FÁZE 7** – Nasazení _(artefakty hotové: 7.2 produkční Dockerfiles api+web(nginx)+docker-compose.prod.yml (Traefik labels, hardening), 7.3 deploy.yml na prod compose, 7.4 monitoring + 7.5 backup skript, docs/deployment.md. Opraveny 3 prod chyby (shared bundling, migrate CLI, nesting migrací). **ZBÝVÁ na uživateli: DNS, .env na serveru, první `docker compose up`, zapnout push trigger**)_
-- [x] **FÁZE 8** – Finální revize _(8.1 senior, 8.2 security signoff, 8.3 UX, 8.4 performance → docs/final-review.md; ověřeno: indexy využity (EXPLAIN), lazy chunky, bundle ~146 kB brotli, k6 load test scripts/load-test.js)_
+- [x] **FÁZE 8** – Finální revize _(8.1 senior, 8.2 security signoff, 8.3 UX, 8.4 performance → docs/final-review.md; ověřeno: indexy využity (EXPLAIN), lazy chunky, bundle ~146 kB brotli, k6 load test scripts/load-test.js. **Pozn. revize 2026-06-11: po dokončení Fáze 7 (produkční spuštění) zopakovat 8.2/8.4 a 6.4 proti reálné produkci** – signoff vznikl před nasazením)_
 
 ---
 
@@ -84,6 +84,12 @@
 > | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | ❌ **ZBÝVÁ** | viz TODO níže |
 >
 > **Branch protection na `main`:** ✅ nastaveno (PR povinné, 0 schválení, zákaz force-push/mazání).
+>
+> ⚠️ **Bezpečnostní poznámka k deploy klíči (revize 2026-06-11):** `github_deploy` klíč je
+> autorizovaný pro **root** – kompromitace GitHub Actions (např. přes závislost workflow) by
+> znamenala root na serveru se 6 aplikacemi. Zmírnění: v `authorized_keys` omez klíč pomocí
+> `command="/usr/local/bin/deploy-notion-todo.sh",restrict` (forced command – klíč pak umí jen
+> spustit deploy skript, nic jiného), volitelně vyhrazený uživatel ve skupině `docker` místo roota.
 >
 > ---
 >
@@ -267,7 +273,7 @@
 - **Vstup**: Google Cloud Console setup (manuální), SQLite schema z 1.2
 - **Výstup**: Funkční `/auth/google`, `/auth/google/callback`, `/auth/me`, `/auth/logout` endpointy
 - **Testy/Revize**: Přihlášení přes Google funguje; cookie se nastaví; `/auth/me` vrátí uživatele; logout smaže session ze SQLite
-- **Claude Code zadání**: `Implementuj src/plugins/auth.ts: Google OAuth 2.0 Authorization Code flow s PKCE (code_challenge S256) a CSRF state parametrem – state i code_verifier ulož do krátkodobé HTTPOnly cookie (TTL 10 min) a v callbacku striktně ověř shodu (bez google-auth-library – standardní OAuth2 s fetch pro token exchange a Google Identity API pro userinfo na https://www.googleapis.com/oauth2/v3/userinfo). Vygeneruj náhodný opaque session token (32B), do SQLite ulož jen jeho SHA-256 hash (token_hash), do JWT (jose) vlož session id + jti, expirace 7 dní (absolute) + idle timeout 30 dní s prodloužením session při aktivitě. HTTPOnly Secure SameSite=Lax cookie (Lax kvůli OAuth redirectu; Strict by zablokoval cookie při návratu z Google). Cookie scope na vlastní doménu, Path=/. Middleware: ověř JWT (alg whitelist ES256/HS256, NE 'none') + existenci a expiraci session v SQLite (umožňuje okamžitou invalidaci). Logout: smaže session z DB, clearCookie. Endpoint POST /auth/mobile pro iOS: přijme Google id_token, POVINNĚ ověř podpis proti Google JWKS (https://www.googleapis.com/oauth2/v3/certs, cache klíčů), zkontroluj iss (accounts.google.com), aud (== GOOGLE_CLIENT_ID resp. iOS client id), exp, email_verified; teprve pak vystav session cookie. Přidej rotaci session id při (re)loginu.`
+- **Claude Code zadání**: `Implementuj src/plugins/auth.ts: Google OAuth 2.0 Authorization Code flow s PKCE (code_challenge S256) a CSRF state parametrem – state i code_verifier ulož do krátkodobé HTTPOnly cookie (TTL 10 min) a v callbacku striktně ověř shodu (bez google-auth-library – standardní OAuth2 s fetch pro token exchange a Google Identity API pro userinfo na https://www.googleapis.com/oauth2/v3/userinfo). Vygeneruj náhodný opaque session token (32B), do SQLite ulož jen jeho SHA-256 hash (token_hash), do JWT (jose) vlož session id + jti, idle timeout 7 dní s prodloužením session při aktivitě + absolutní strop 30 dní (pozn. revize 2026-06-11: původní text měl hodnoty prohozené – implementace v `db/sessions.ts` je správně: idle 7 d / absolute 30 d). HTTPOnly Secure SameSite=Lax cookie (Lax kvůli OAuth redirectu; Strict by zablokoval cookie při návratu z Google). Cookie scope na vlastní doménu, Path=/. Middleware: ověř JWT (právě JEDEN povolený alg – HS256, protože podepisujeme symetrickým JWT_SECRET; NE 'none' a NEmixovat symetrické a asymetrické algoritmy v jednom whitelistu – algorithm-confusion riziko) + existenci a expiraci session v SQLite (umožňuje okamžitou invalidaci). Po úspěšném callbacku přesměruj VÝHRADNĚ na FRONTEND_URL (žádný návratový/redirect parametr z requestu – prevence open redirectu). Logout: smaže session z DB, clearCookie. Endpoint POST /auth/mobile pro iOS: přijme Google id_token, POVINNĚ ověř podpis proti Google JWKS (https://www.googleapis.com/oauth2/v3/certs, cache klíčů), zkontroluj iss (accounts.google.com), aud (== GOOGLE_CLIENT_ID resp. iOS client id), exp, email_verified; teprve pak vystav session cookie. Přidej rotaci session id při (re)loginu.`
 - **Technologie/nástroje**: jose (JWT + JWKS verifikace), @fastify/cookie, Google Identity API (userinfo + certs)
 - **Manuální kroky (Google Cloud Console)**:
   1. Jdi na https://console.cloud.google.com → New Project: `NotionTodoApp`
@@ -286,7 +292,7 @@
 - **Vstup**: Auth middleware z 1.3
 - **Výstup**: `src/services/notion.ts`, `POST /api/setup/validate`, `POST /api/setup/save`
 - **Testy/Revize**: Validace vrátí chybu pro neexistující sloupce; úspěch pro správnou DB; SSRF ochrana: URL pro Notion API je hardcoded (ne z user inputu)
-- **Claude Code zadání**: `Vytvoř src/services/notion.ts s NotionService třídou: metody validateDatabase(token, dbId) která ověří existenci a typy sloupců: Name=title, Status=select (options: Todo/In Progress/Review/Done), Tags=multi_select, Due=date, Timeline=date, Owner=people, Description=rich_text, DependsOn=relation (self-referencing). Podúkoly jsou nativní Sub-items – dotazuj přes filter {property: "parent_page_id"} nebo pomocí blocks API. getTasks() vrátí flat list + parent_id pro hierarchii (kompletní stránkování přes start_cursor/has_more, ne jen prvních 100), createTask(), updateTask(), deleteTask(), createSubtask(parentId). Validuj database_id i parent_id jako UUID formát (regex) PŘED použitím v API cestě (ochrana proti path/SSRF injection). Implementuj sdílenou request queue (p-queue concurrency dle rate limitu, ne per-request) s rate limiting ~3 req/s (Notion API limit) a exponential backoff s respektem k Retry-After hlavičce u 429. Reuse HTTP spojení (undici keep-alive agent). Všechna volání mají timeout 10s + AbortController. Přidej server-side per-user cache vrstvu (in-memory LRU, TTL ~20s) pro getTasks – mutace jsou write-through (po úspěšném zápisu invaliduj/aktualizuj cache), čímž se drasticky sníží počet volání Notion při 30s pollingu více klientů. Endpoint POST /api/setup: přijme token a dbId, zavolá validateDatabase, při úspěchu zašifruje a uloží do notion_configs. Přidej volitelný POST /api/setup/create-database: přes Notion API vytvoř novou databázi se správným schématem (8 sloupců) jako rodiče zvolené stránky – sníží friction onboarding.`
+- **Claude Code zadání**: `Vytvoř src/services/notion.ts s NotionService třídou: metody validateDatabase(token, dbId) která ověří existenci a typy sloupců: Name=title, Status=select (options: Todo/In Progress/Review/Done), Tags=multi_select, Due=date, Timeline=date, Owner=people, Description=rich_text, DependsOn=relation (self-referencing). Podúkoly jsou nativní Sub-items – dotazuj přes filter {property: "parent_page_id"} nebo pomocí blocks API. getTasks() vrátí flat list + parent_id pro hierarchii (kompletní stránkování přes start_cursor/has_more, ne jen prvních 100), createTask(), updateTask(), deleteTask(), createSubtask(parentId). Validuj database_id i parent_id jako UUID formát (regex) PŘED použitím v API cestě (ochrana proti path/SSRF injection). Implementuj sdílenou request queue (p-queue concurrency dle rate limitu, ne per-request) s rate limiting ~3 req/s (Notion API limit) a exponential backoff s respektem k Retry-After hlavičce u 429. Reuse HTTP spojení (undici keep-alive agent). Všechna volání mají timeout 10s + AbortController. Přidej server-side per-user cache vrstvu (in-memory LRU) pro getTasks – mutace jsou write-through (po úspěšném zápisu invaliduj/aktualizuj cache), čímž se drasticky sníží počet volání Notion při 30s pollingu více klientů. POZOR na TTL: musí být ≥ pollovací interval klienta (30 s), tedy ~35 s, jinak je každý poll jediného klienta cache-miss a cache pomáhá jen souběžným klientům; alternativně stale-while-revalidate (vrať stale data hned, refresh na pozadí). _(Revize 2026-06-11: implementace má TTL 20 s – zvednout.)_ Endpoint POST /api/setup: přijme token a dbId, zavolá validateDatabase, při úspěchu zašifruje a uloží do notion_configs. Přidej volitelný POST /api/setup/create-database: přes Notion API vytvoř novou databázi se správným schématem (8 sloupců) jako rodiče zvolené stránky – sníží friction onboarding.`
 - **Technologie/nástroje**: @notionhq/client 2.x, p-queue pro request throttling, lru-cache, undici (keep-alive)
 
 ---
@@ -333,7 +339,7 @@
 - **Kdo**: `[Claude]`
 - **Vstup**: Auth + DB z 1.2–1.3
 - **Výstup**: `DELETE /api/account`, `GET /api/account/export`, audit log tabulka, `/health` + `/metrics`, graceful shutdown
-- **Testy/Revize**: Výmaz účtu smaže users/sessions/notion_configs/device_tokens (CASCADE); export vrátí JSON se všemi daty uživatele; audit log zaznamená login/logout/setup/delete
+- **Testy/Revize**: Výmaz účtu smaže users/sessions/notion_configs/device_tokens (CASCADE); audit_log se anonymizuje (user_id ON DELETE SET NULL – záznamy přežijí výmaz bez vazby na osobu); export vrátí JSON se všemi daty uživatele; audit log zaznamená login/logout/setup/delete. Doplnit retenci audit logu (obsahuje IP + user-agent = PII): automatické mazání záznamů starších např. 90 dní (node-cron spolu s cleanup sessions)
 - **Claude Code zadání**: `Přidej DELETE /api/account (smaže uživatele a díky ON DELETE CASCADE i sessions, notion_configs, device_tokens; zruší cookie) a GET /api/account/export (JSON se všemi osobními daty – profil, configy bez plaintext tokenu). Přidej tabulku audit_log (id, user_id, event, ip, user_agent, created_at) do migrace 002 a zaznamenávej bezpečnostní události (login, logout, setup změna, account delete, neúspěšné ověření). Minimalizuj PII v provozních logách (Pino redact emailů). Přidej /health (status, uptime, db check, version) a /metrics (Prometheus přes fastify-metrics – volitelné, chráněné). Implementuj graceful shutdown (SIGTERM → dokonči requesty, zavři DB, vyprázdni Notion frontu).`
 - **Technologie/nástroje**: Fastify hooks, fastify-metrics (volitelné), node:crypto
 
@@ -410,7 +416,7 @@
 - **Vstup**: Auth flow z 3.2
 - **Výstup**: SetupPage s 3 kroky: intro, zadání credentials, potvrzení
 - **Testy/Revize**: Neplatný token zobrazí chybovou zprávu; platný token zobrazí seznam validovaných sloupců se zelenými/červenými ikonami
-- **Claude Code zadání**: `Vytvoř src/pages/SetupPage.tsx: krok 1 (instrukce jak vytvořit Notion integration a sdílet databázi s integrací – s obrázky/screenshoty nebo linky na Notion docs), krok 2 (input pro token s maskováním – zobraz jen prefix "secret_XXXX...", input pro DB ID nebo URL s automatickým parsováním ID z URL), krok 3 (výsledek validace – seznam 8 sloupců se zelenými/červenými ikonami + nápověda jak opravit chybějící). Po úspěchu přesměruj na dashboard. Použij Shadcn/ui Card, Input, Button, Alert, Badge komponenty.`
+- **Claude Code zadání**: `Vytvoř src/pages/SetupPage.tsx: krok 1 (instrukce jak vytvořit Notion integration a sdílet databázi s integrací – s obrázky/screenshoty nebo linky na Notion docs), krok 2 (input pro token s maskováním – zobraz jen prefix; POZOR: Notion od 09/2024 vydává tokeny s prefixem `ntn_`, starší integrace mají `secret_` – akceptuj a dokumentuj OBA prefixy v placeholderu i nápovědě; input pro DB ID nebo URL s automatickým parsováním ID z URL), krok 3 (výsledek validace – seznam 8 sloupců se zelenými/červenými ikonami + nápověda jak opravit chybějící). Po úspěchu přesměruj na dashboard. Použij Shadcn/ui Card, Input, Button, Alert, Badge komponenty.`
 - **Technologie/nástroje**: Shadcn/ui, React Hook Form, Zod
 
 ---
@@ -669,7 +675,7 @@
 - **Výstup**: Registrace APNs, backend endpoint pro odeslání notifikace, scheduler
 - **Testy/Revize**: Testovací notifikace dorazí na zařízení
 - **Claude Code zadání**: `V iOS app: requestAuthorization pro notifikace, registrace pro remote notifications, odeslání device tokenu na backend POST /api/notifications/register. V backendu: přidej tabulku device_tokens (id, user_id, token, platform, created_at) do SQLite migrace 002 (token UNIQUE), odesílání přes APNs HTTP/2 s token-based auth (.p8, JWT ES256) – preferuj udržovanou knihovnu (@parse/node-apn) nebo přímý HTTP/2 klient (původní node-apn je málo udržovaný). node-cron každou hodinu kontroluje tasks z Notion API s due date za 24h a odesílá notifikaci; při 410 odpovědi smaž neplatný device token; dedup přes last_notified_at, aby se neposílala duplicitní notifikace pro stejný task/termín.`
-- **Manuální kroky**: V Apple Developer Portal vytvoř APNs klíč (.p8 soubor) a přidej ho jako GitHub Secret `APNS_KEY`
+- **Manuální kroky**: V Apple Developer Portal vytvoř APNs klíč (.p8 soubor) a ulož ho do serverového `/opt/apps/notion-todo-app/.env` (deploy model A – aplikační tajemství NEpatří do GitHub Secrets, viz „Skutečný stav infrastruktury" ve Fázi 0)
 - **Technologie/nástroje**: UserNotifications framework, @parse/node-apn (APNs HTTP/2, token auth), node-cron
 
 ---
@@ -743,7 +749,7 @@
 - **Vstup**: Staging prostředí běžící na VPS
 - **Výstup**: Penetrační test report
 - **Testy/Revize**: Žádná kritická zranitelnost nenalezena
-- **Claude Code zadání**: `Vytvoř penetration-testing-checklist.md: seznam testů pro: SQL injection přes API parametry (better-sqlite3 prepared statements – ověř), XSS přes task název/popis (Notion API escapuje, React escapuje – ale ověř), CSRF (SameSite=Strict cookie + Origin header validace), brute force (rate limiting na /auth/* – ověř), JWT manipulation (změna alg na none – jose knihovna to blokuje – ověř), IDOR (přístup k úkolům jiného uživatele přes notion_config user_id check), open redirect v OAuth flow (state parametr validace), SSRF (hardcoded Notion API URL + UUID validace dbId). Doplň: TLS konfigurace (testssl.sh / Mozilla Observatory), scan security headers (securityheaders.com), ověření cookie flagů (HttpOnly/Secure/SameSite) v reálné odpovědi, kontrola, že /metrics a Traefik dashboard nejsou veřejně přístupné.`
+- **Claude Code zadání**: `Vytvoř penetration-testing-checklist.md: seznam testů pro: SQL injection přes API parametry (better-sqlite3 prepared statements – ověř), XSS přes task název/popis (Notion API escapuje, React escapuje – ale ověř), CSRF (SameSite=Lax cookie – viz 1.3, Strict by rozbil OAuth návrat – + Origin header validace u mutací), brute force (rate limiting na /auth/* – ověř), JWT manipulation (změna alg na none – jose knihovna to blokuje – ověř), IDOR (přístup k úkolům jiného uživatele přes notion_config user_id check), open redirect v OAuth flow (state parametr validace), SSRF (hardcoded Notion API URL + UUID validace dbId). Doplň: TLS konfigurace (testssl.sh / Mozilla Observatory), scan security headers (securityheaders.com), ověření cookie flagů (HttpOnly/Secure/SameSite) v reálné odpovědi, kontrola, že /metrics a Traefik dashboard nejsou veřejně přístupné.`
 - **Technologie/nástroje**: Burp Suite Community, curl, OWASP ZAP
 
 ---
@@ -758,7 +764,7 @@
 - **Výstup**: Produkční prostředí připraveno k deployi
 - **Manuální kroky**:
   1. Na VPS: `mkdir -p /opt/notionapp/{data,logs,backups}`
-  2. Vytvoř `/opt/notionapp/.env` s produkčními hodnotami (nikdy do Gitu! – viz .env.example pro seznam proměnných)
+  2. Vytvoř `/opt/notionapp/.env` s produkčními hodnotami (nikdy do Gitu! – viz .env.example pro seznam proměnných); nastav `chmod 600 .env` (vlastník root)
   3. Nastav logrotate: `nano /etc/logrotate.d/notionapp`
   4. Nastav automatické bezpečnostní aktualizace: `apt install unattended-upgrades && dpkg-reconfigure unattended-upgrades`
 
@@ -778,6 +784,12 @@
 
 ### 7.3 GitHub Actions deploy workflow
 
+> ⚠️ **Zadání níže (GHCR model) je překonané** – platí deploy **model A** (lokální build na ARM
+> serveru, viz „Skutečný stav infrastruktury" ve Fázi 0). `deploy.yml` je už přepsaný:
+> SSH → `git reset origin/main` → `compose build & up` → health check → rollback na předchozí commit.
+> **Limit rollbacku:** `git reset` nevrátí DB migrace → drž **forward-only migrace** (pouze aditivní
+> změny schématu, žádné DROP/RENAME v témže release) a před deployem udělej zálohu SQLite (7.5).
+
 - **Popis**: Automatický deploy při merge do main s rollback mechanismem při selhání.
 - **Kdo**: `[Claude]`
 - **Vstup**: GitHub Secrets z 0.7, Docker images z 7.2
@@ -795,7 +807,7 @@
 - **Vstup**: Běžící produkce z 7.3
 - **Výstup**: Uptime Kuma dashboard, notifikace na email/Slack, SSL expiry monitoring
 - **Claude Code zadání**: `Přidej Uptime Kuma do infra/docker-compose.yml (louislam/uptime-kuma:1). Přidej /health endpoint do Fastify API: JSON {status: "ok", uptime: process.uptime(), db: "connected", version: process.env.npm_package_version}. Přidej SSL certifikát monitor do Uptime Kuma konfigurace (typ: Certificate expiry, upozornění 14 dní před expirací). Vytvoř monitoring docker compose override soubor.`
-- **Manuální kroky**: Přistup na Uptime Kuma UI (:3001), přidej monitor pro API /health, web URL a SSL certifikát, nastav email notifikace
+- **Manuální kroky**: Přistup na Uptime Kuma UI (:3001), přidej monitor pro API /health, web URL a SSL certifikát, nastav email notifikace. **Port 3001 nesmí být veřejně dostupný** – bind na 127.0.0.1 (přístup přes SSH tunel) nebo zablokuj v Hetzner Cloud Firewall, případně vystav přes Traefik s basic-auth
 - **Technologie/nástroje**: Uptime Kuma, Fastify health endpoint
 
 ---
@@ -806,7 +818,7 @@
 - **Kdo**: `[Claude+Uživatel]`
 - **Vstup**: Produkční VPS
 - **Výstup**: Cron job pro denní zálohy SQLite, zálohy v Backblaze B2 nebo AWS S3
-- **Claude Code zadání**: `Vytvoř backup.sh skript: SQLite .backup příkaz (ne cp – .backup je transakčně bezpečné) do timestampovaného souboru /opt/notionapp/backups/db-$(date +%Y%m%d-%H%M%S).sqlite, komprimuj gzip, nahraj do B2/S3 přes rclone nebo aws cli, smaž lokální zálohy starší 7 dní (vzdálené 30 dní). Přidej do /etc/cron.d/ pro spouštění každý den v 3:00. Přidej test zálohy: ověř že SQLite soubor lze otevřít po stažení.`
+- **Claude Code zadání**: `Vytvoř backup.sh skript: SQLite .backup příkaz (ne cp – .backup je transakčně bezpečné) do timestampovaného souboru /opt/notionapp/backups/db-$(date +%Y%m%d-%H%M%S).sqlite, komprimuj gzip, ZAŠIFRUJ před uploadem (gpg --symmetric AES-256, passphrase mimo zálohu – DB obsahuje PII: e-maily, profily), nahraj do B2/S3 přes rclone nebo aws cli, smaž lokální zálohy starší 7 dní (vzdálené 30 dní). Přidej do /etc/cron.d/ pro spouštění každý den v 3:00. Přidej test zálohy: ověř že SQLite soubor lze otevřít po stažení, a pravidelný restore drill (obnova na čistém adresáři, ne jen otevření souboru).` _(Implementovaný `scripts/backup.sh` už GPG šifrování má – plán doplněn dle reality.)_ **Pozor:** `NOTION_ENCRYPTION_KEY` a `BACKUP_ENCRYPTION_KEY` zálohuj ODDĚLENĚ od záloh DB (password manager) – bez nich jsou zálohy/tokeny po ztrátě serveru nedešifrovatelné.
 - **Manuální kroky**: Vytvoř Backblaze B2 bucket, nastav rclone konfiguraci na VPS, otestuj manuální zálohu
 - **Technologie/nástroje**: SQLite .backup, rclone, cron
 
@@ -929,6 +941,122 @@
 
 ---
 
+## Nezávislá revize plánu (2026-06-11)
+
+> Čtvrtá, nezávislá revize z pohledů **security, výkonnost, UX/UI, efektivita kódu a provoz**.
+> Na rozdíl od iterací 1–3 (které revidovaly plán „na papíře") porovnává plán i se **skutečnou
+> implementací** – nálezy typu „plán říká X, kód dělá Y" jsou ověřené v kódu. Závažnost:
+> 🔴 vysoká (opravit před produkcí), 🟡 střední (opravit brzy), 🔵 nízká / backlog.
+
+### Security
+
+1. 🔴 **Root SSH deploy klíč bez omezení.** `VPS_SSH_KEY` z GitHub Actions je autorizovaný pro
+   `root` na serveru se 6 aplikacemi – kompromitace Actions = root na celém serveru. → zapracováno:
+   poznámka s mitigací (forced command `command=...,restrict`) ve **Fázi 0**, nový řádek v rizicích.
+2. 🟡 **Plán 1.3 měl prohozené session timeouty** („expirace 7 dní absolute + idle 30 dní" – idle delší
+   než absolute nedává smysl). Implementace (`db/sessions.ts`) je správně: **idle 7 d / absolute 30 d**.
+   → text **1.3** opraven dle reality.
+3. 🟡 **Alg whitelist „ES256/HS256" v 1.3 byl anti-pattern** – mix symetrického a asymetrického
+   algoritmu v jednom verify otevírá algorithm-confusion útoky. Implementace (`auth/jwt.ts`) správně
+   pinuje jen HS256. → text **1.3** opraven.
+4. 🟡 **Nekonzistence 6.4 vs 1.3:** pentest checklist ověřoval `SameSite=Strict`, ale 1.3 (správně)
+   nasazuje `Lax`. Test podle starého textu by „prošel" proti špatnému očekávání. → **6.4** opraveno.
+5. 🟡 **Open redirect po OAuth callbacku** nebyl v plánu explicitně ošetřen (jen v rizicích). → do
+   **1.3** doplněno: redirect po loginu výhradně na `FRONTEND_URL`, nikdy z request parametru.
+6. 🟡 **Audit log = PII bez retence.** `audit_log` ukládá IP + user-agent; plán neřešil retenci ani
+   chování při výmazu účtu. Implementace už anonymizuje (`ON DELETE SET NULL`) – plán doplněn
+   o retenci (mazání > 90 dní). → **1.8**.
+7. 🟡 **Nekonzistence 5.8 vs deploy model A:** APNs `.p8` klíč měl jít do GitHub Secrets, ale model A
+   ukládá aplikační tajemství do serverového `.env`. → **5.8** opraveno.
+8. 🔵 **Rotace šifrovacího klíče není dotažená:** `key_version` sloupec existuje, ale chybí úkol/runbook
+   na samotnou rotaci (re-encrypt skript: dešifruj starým, zašifruj novým, zvyš `key_version`). → backlog.
+9. 🔵 **Zálohy klíčů:** `NOTION_ENCRYPTION_KEY` + `BACKUP_ENCRYPTION_KEY` musí být zálohovány odděleně
+   od DB záloh, jinak jsou data po ztrátě serveru nedešifrovatelná. → doplněno do **7.5**.
+10. 🔵 `chmod 600` pro serverový `.env` → doplněno do **7.1**; `/metrics` je v implementaci korektně
+    chráněn Bearer tokenem (`METRICS_TOKEN`), bez něj vrací 404 – odpovídá záměru 1.8. ✅
+
+### Výkonnost
+
+11. 🔴 **Cache TTL 20 s < polling 30 s = cache skoro k ničemu pro jednoho klienta.** Plán (1.4) předepsal
+    TTL ~20 s a zároveň 30s polling (3.4) – každý poll jediného klienta je tak cache-miss a jde do
+    Notionu; cache pomáhá jen více souběžným oknům téhož uživatele. Ověřeno v kódu
+    (`services/notion/service.ts`: `TASKS_CACHE_TTL_MS = 20_000`). Řešení: TTL ≥ 35 s, nebo
+    stale-while-revalidate. → **1.4** opraveno v plánu; **úprava konstanty v kódu = follow-up**.
+12. 🟡 **„Noisy neighbor" na globální frontě:** 3 req/s je strop pro všechny uživatele dohromady; uživatel
+    s >100 úkoly (stránkování = více requestů/refresh) může vyhladovět ostatní. Plán nikde neuvádí
+    kapacitní obálku (~desítky uživatelů při 30s pollingu). → nový řádek v rizicích; per-user fairness
+    ve frontě = backlog.
+13. 🔵 **Notion webhooky** (GA 2025) by nahradily polling: nižší latence změn z Notionu i řádově méně
+    API volání. Vyžaduje veřejný webhook endpoint + verifikaci podpisu. → backlog, zvážit po nasazení.
+14. 🔵 **Delta sync / ETag:** `getTasks` vrací při každém pollu celý seznam – levné optimalizace:
+    Notion filter na `last_edited_time` (jen změny od posledního fetche) a ETag/`304 Not Modified`
+    mezi webem a API (ušetří přenos, ne volání Notionu). → backlog.
+15. 🔵 **k6 load test musí mířit na mock Notion**, ne na reálné API (jinak test sám vyčerpá rate limit
+    a zkreslí výsledky). → upřesnění k 8.4.
+
+### UX / UI
+
+16. 🟡 **Owner pole je fakticky read-only a plán to nikde neřeší.** Schéma má `ownerIds`, UI zobrazuje
+    avatary, ale neexistuje endpoint na seznam uživatelů Notion workspace (`GET /users` v Notion API),
+    takže z appky nelze vlastníka přiřadit (web posílá `ownerIds: []`). Buď doplnit
+    `GET /api/notion/users` + picker, nebo to zdokumentovat jako vědomé omezení („Owner se edituje
+    v Notionu"). → backlog s rozhodnutím.
+17. 🟡 **Zastaralý token prefix v onboardingu:** Notion od 09/2024 vydává integračním tokenům prefix
+    `ntn_`, plán/UI (SetupPage, iOS SetupView) říkají `secret_` – nový uživatel s `ntn_` tokenem bude
+    zmatený, zda má správnou hodnotu. → **3.3** opraveno v plánu; úprava placeholderů v kódu = follow-up.
+18. 🔵 **Status jako `select` vs nativní Notion `status` property:** uživatel s existující databází, kde je
+    Status typu „status" (dnes default v Notionu), neprojde validací 1.4. Zvážit podporu obou typů
+    property. → backlog.
+19. 🔵 **Mobilní web:** desktop-first rozhodnutí (3.12) je OK vzhledem k existenci iOS appky; doporučeno
+    aspoň ověřit použitelnost na ~390 px (občasné otevření z telefonu bez nainstalované appky).
+
+### Efektivita kódu / architektura
+
+20. 🟡 **Dvojí údržba schémat:** Zod schémata v `packages/shared` + ručně psaná JSON schémata pro
+    `@fastify/swagger` (1.5) = dva zdroje pravdy, které se mohou rozjet. Doporučení:
+    `fastify-type-provider-zod` nebo `zod-to-json-schema` – OpenAPI generovat ze Zodu. → backlog.
+21. 🟡 **Stárnutí závislostí:** plán pinuje `@notionhq/client 2.x`, ale Notion API verze **2025-09-03**
+    zavádí data sources (multi-source databáze) a SDK v5; dále Zod 3→4, Vitest 1→3. Kontraktní testy
+    (4.4) regresi zachytí, ale upgrade okno je třeba naplánovat. → nový řádek v rizicích.
+22. 🔵 **Odchylka od plánu (v pořádku):** místo `p-queue` je vlastní `RateLimitQueue`
+    (concurrency 3, rozestup 350 ms ≈ 2,9 req/s) – méně závislostí, chování odpovídá záměru. Jen
+    zaznamenáno; plán ponechán (p-queue jako doporučení, ne požadavek).
+
+### Provoz / nasazení
+
+23. 🔴 **Rollback deploye nevrací DB migrace.** `deploy.yml` rollbackuje `git reset` + rebuild, ale
+    migrace už proběhly – starý kód nad novým schématem může spadnout. → do **7.3** doplněna politika
+    forward-only migrací + záloha před deployem; nový řádek v rizicích.
+24. 🟡 **7.3 text byl překonaný** (GHCR/amd64 model, který byl ve Fázi 0 nahrazen modelem A) – hrozilo,
+    že se podle něj někdo zařídí. → do **7.3** doplněna poznámka o nahrazení.
+25. 🟡 **Uptime Kuma (:3001) nesmí být veřejná** – admin UI bez dodatečné ochrany. → **7.4** doplněno
+    (localhost bind / Hetzner FW / Traefik basic-auth).
+26. 🔵 **Restore drill:** test zálohy „soubor lze otevřít" nestačí – pravidelně provést skutečnou obnovu.
+    → **7.5** doplněno. Implementovaný `backup.sh` už šifruje GPG AES-256 (lepší než původní plán) –
+    plán srovnán s realitou.
+27. 🔵 **Krátký výpadek při deployi:** `compose up -d --build` znamená sekundy až desítky sekund
+    nedostupnosti – pro osobní appku akceptovatelné, jen vědomě (zero-downtime = mimo rozsah).
+
+### Konzistence a stav plánu
+
+28. 🟡 **Fáze 8 „hotová" před dokončením Fáze 5/7:** security signoff a performance audit vznikly před
+    produkčním nasazením a bez ověření iOS buildu. → k Fázi 8 doplněna poznámka: po dokončení Fáze 7
+    zopakovat 8.2/8.4 a pentest 6.4 proti reálné produkci.
+29. 🔵 **Souhrn (odhady časů, MVP plán) je zastaralý** – fáze jsou z většiny hotové; sekce má už jen
+    historickou hodnotu. Ponecháno bez úprav.
+
+### Shrnutí follow-upů do kódu (plán je opraven, kód zatím ne)
+
+| # | Soubor | Změna | Stav |
+|---|--------|-------|------|
+| 11 | `packages/api/src/services/notion/service.ts` | `TASKS_CACHE_TTL_MS` 20 s → 35 s (nebo SWR) | ✅ hotovo |
+| 17 | `packages/web/src/pages/SetupPage.tsx`, `packages/ios/.../SetupView.swift` | placeholder/nápověda: `ntn_` i `secret_` prefix | ✅ hotovo |
+| 1 | server `authorized_keys` | forced command pro `github_deploy` klíč *(manuální, uživatel)* | ⬜ čeká na uživatele |
+| 6 | `packages/api/src/db/auditLog.ts` | retence audit_logu (90 dní, hodinový cleanup jako u sessions) | ✅ hotovo |
+| – | `packages/web/src/views/KanbanView.tsx` | mobilní UX: board vyplní celou výšku, horizontální scroll funguje na celé ploše (`min-h-full`) | ✅ hotovo |
+
+---
+
 ## Souhrn
 
 ### Celkový odhadovaný čas
@@ -984,3 +1112,7 @@
 | Únos Google OAuth callback | Nízká | Kritický | Whitelist redirect URIs v Google Console, validuj state parametr, PKCE flow |
 | Deploy selhání v produkci | Střední | Vysoký | Automatický rollback na předchozí image tag při selhání health checku (viz 7.3) |
 | SSL certifikát expiruje | Nízká | Vysoký | Traefik obnovuje automaticky; Uptime Kuma monitoruje 14 dní před expirací (viz 7.4) |
+| Rollback deploye nevrátí DB migrace | Střední | Vysoký | Forward-only migrace (jen aditivní změny schématu), záloha SQLite před deployem (viz 7.3, 7.5) |
+| „Noisy neighbor" na sdílené Notion frontě | Střední (při více uživatelích) | Střední | Globální fronta 3 req/s je tvrdý strop pro VŠECHNY uživatele dohromady – jeden uživatel s velkou DB (stránkování) může vyhladovět ostatní. Per-user fairness/strop ve frontě; kapacitní obálka ~ desítky uživatelů při 30s pollingu (viz revize 2026-06-11) |
+| Kompromitace GitHub Actions → root SSH na sdílený server | Nízká | Kritický | Forced command (`command=...,restrict`) na deploy klíči, příp. vyhrazený deploy uživatel (viz pozn. Fáze 0) |
+| Zastarání Notion API (verze 2025-09-03: data sources, SDK v5) a závislostí | Střední | Střední | Kontraktní testy (4.4) zachytí breaking changes; naplánovat upgrade okno pro @notionhq/client 2.x→5.x, Zod 3→4, Vitest 1→3 |

@@ -79,7 +79,7 @@ export function SetupPage() {
                   </a>
                   .
                 </li>
-                <li>Zkopíruj „Internal Integration Token" (začíná na secret_…).</li>
+                <li>Zkopíruj „Internal Integration Token" (začíná na ntn_, u starších integrací secret_…).</li>
                 <li>Otevři svou databázi úkolů → ⋯ → „Connections" → přidej integraci.</li>
                 <li>Zkopíruj URL databáze (obsahuje její ID).</li>
               </ol>
@@ -94,7 +94,7 @@ export function SetupPage() {
                 <Input
                   id="token"
                   type="password"
-                  placeholder="secret_…"
+                  placeholder="ntn_… nebo secret_…"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   autoComplete="off"

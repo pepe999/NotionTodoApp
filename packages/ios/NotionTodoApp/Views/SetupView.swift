@@ -16,7 +16,7 @@ struct SetupView: View {
         NavigationStack {
             Form {
                 Section("Notion integrace") {
-                    SecureField("Integration token (secret_…)", text: $token)
+                    SecureField("Integration token (ntn_… / secret_…)", text: $token)
                         .textInputAutocapitalization(.never)
                     TextField("Database ID nebo URL", text: $databaseId)
                         .textInputAutocapitalization(.never)
