@@ -25,6 +25,9 @@ export function useKeyboardShortcuts(): void {
         case '3':
           s.setActiveView('calendar');
           break;
+        case '4':
+          s.setActiveView('todo');
+          break;
         case 'n':
         case 'N':
           e.preventDefault();
