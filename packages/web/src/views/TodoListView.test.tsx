@@ -10,7 +10,7 @@ vi.mock('@/api/tasks', () => ({
   fetchTasks: vi.fn(async () => []),
 }));
 
-import { updateTask } from '@/api/tasks';
+import { updateTask, createTask } from '@/api/tasks';
 import { TodoListView } from './TodoListView';
 import { renderWithProviders } from '@/test/utils';
 import { makeTask } from '@/test/factory';
@@ -100,5 +100,28 @@ describe('TodoListView', () => {
   it('prázdný stav nabídne vytvoření prvního úkolu', () => {
     renderWithProviders(<TodoListView />, { tasks: [] });
     expect(screen.getByRole('button', { name: /Vytvořit první úkol/ })).toBeInTheDocument();
+  });
+
+  it('rychlé přidání: Enter vytvoří task a vyčistí input', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<TodoListView />, { tasks: [makeTask({ name: 'Existující' })] });
+    const input = screen.getByRole('textbox', { name: 'Rychlé přidání úkolu' });
+    await user.type(input, 'Nový rychlý úkol{Enter}');
+    expect(createTask).toHaveBeenCalledWith({
+      name: 'Nový rychlý úkol',
+      status: 'Todo',
+      tags: [],
+      ownerIds: [],
+      dependsOnIds: [],
+    });
+    expect(input).toHaveValue('');
+  });
+
+  it('rychlé přidání: prázdný / whitespace text task nevytvoří', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<TodoListView />, { tasks: [makeTask({ name: 'Existující' })] });
+    const input = screen.getByRole('textbox', { name: 'Rychlé přidání úkolu' });
+    await user.type(input, '   {Enter}');
+    expect(createTask).not.toHaveBeenCalled();
   });
 });

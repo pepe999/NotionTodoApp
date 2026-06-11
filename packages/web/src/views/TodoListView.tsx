@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import type { Task } from '@notiontodoapp/shared';
-import { useFilteredTasks, useUpdateTask } from '@/hooks/useTasks';
+import { useFilteredTasks, useUpdateTask, useCreateTask } from '@/hooks/useTasks';
 import { useTaskStore } from '@/store/taskStore';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -81,6 +81,33 @@ function TodoRow({
   );
 }
 
+/** Rychlé přidání úkolu na konci seznamu (styl iOS Připomínek): Enter vytvoří task. */
+function QuickAddRow({ onAdd }: { onAdd: (name: string) => void }) {
+  const [name, setName] = useState('');
+  const submit = (): void => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onAdd(trimmed);
+    setName('');
+  };
+  return (
+    <li className="flex items-center gap-3 py-2.5">
+      <Plus className="h-[18px] w-[18px] shrink-0 text-zinc-400" aria-hidden="true" />
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit();
+        }}
+        placeholder="Přidat úkol…"
+        aria-label="Rychlé přidání úkolu"
+        className="min-w-0 flex-1 bg-transparent text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:text-zinc-100"
+      />
+    </li>
+  );
+}
+
 /**
  * Todo list pohled – klasický seznam ve stylu iOS Připomínek: checkbox = status
  * Done/Todo, řazení podle termínu, volba „Skrýt hotové". Podúkoly odsazené pod
@@ -90,6 +117,7 @@ function TodoRow({
 export function TodoListView() {
   const { tasks } = useFilteredTasks();
   const update = useUpdateTask();
+  const create = useCreateTask();
   const openTask = useTaskStore((s) => s.openTask);
   const openCreate = useTaskStore((s) => s.openCreate);
   const hideDone = useTaskStore((s) => s.todoHideDone);
@@ -167,6 +195,11 @@ export function TodoListView() {
             </ul>
           </li>
         ))}
+        <QuickAddRow
+          onAdd={(name) =>
+            create.mutate({ name, status: 'Todo', tags: [], ownerIds: [], dependsOnIds: [] })
+          }
+        />
       </ul>
 
       {doneRoots.length > 0 && (
