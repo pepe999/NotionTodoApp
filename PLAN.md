@@ -38,7 +38,7 @@
 - [~] **FÁZE 0** – Příprava a infrastruktura _(hotovo: 0.1–0.4 + branch protection na main, 0.5/0.6 splněny STÁVAJÍCÍM serverem, 0.7 deploy secrets `VPS_*`; **ZBÝVÁ: vytvořit Google OAuth client** – viz „Skutečný stav infrastruktury" níže)_
 - [x] **FÁZE 1** – Backend API (Fastify + TypeScript) _(KOMPLETNÍ: 1.1 setup, 1.2 SQLite+AES-GCM, 1.3 Google OAuth+PKCE+sessions+/auth/mobile, 1.4 Notion service + setup, 1.5 Tasks CRUD + OpenAPI/Swagger, 1.6 dvouúrovňový rate limiting, 1.7 CORS + security headers, 1.8 GDPR výmaz/export + audit log + /metrics + graceful shutdown)_
 - [x] **FÁZE 2** – Testy backendu _(unit + integrace + E2E přes reálný socket; coverage ~91 % stmts / 81 % branches, prahy 80 % vynucené v CI; 137 testů)_
-- [x] **FÁZE 3** – Frontend Web (React + Vite) _(KOMPLETNÍ: 3.1 setup Vite/Tailwind v4/shadcn-style UI, 3.2 auth, 3.3 setup wizard, 3.4 Zustand+React Query optimistic, 3.5 Kanban dnd-kit, 3.6 Timeline/Gantt, 3.7 Calendar, 3.8 detail modal, 3.9 search/filtry, 3.10 klávesové zkratky, 3.11 toasty+undo+offline, 3.12 a11y/dark mode/i18n základ)_
+- [x] **FÁZE 3** – Frontend Web (React + Vite) _(KOMPLETNÍ: 3.1 setup Vite/Tailwind v4/shadcn-style UI, 3.2 auth, 3.3 setup wizard, 3.4 Zustand+React Query optimistic, 3.5 Kanban dnd-kit, 3.6 Timeline/Gantt, 3.7 Calendar, 3.8 detail modal, 3.9 search/filtry, 3.10 klávesové zkratky, 3.11 toasty+undo+offline, 3.12 a11y/dark mode/i18n základ, 3.13 Todo list pohled)_
 - [x] **FÁZE 4** – Testy frontendu _(4.1 unit/komponenty Vitest+Testing Library, coverage gate 70 % v CI, 66 testů; 4.2 Playwright E2E + 4.3 visual + 4.4 axe a11y authored, route-mock; 4.4 kontraktní test NotionService proti fixturám + size-limit bundle gate)_
 - [~] **FÁZE 5** – iOS (SwiftUI) _(kód hotový: 5.1 MVVM struktura+SwiftLint, 5.2 APIClient actor, 5.3 Google Sign-In+Keychain, 5.4 Kanban, 5.5 Timeline/Canvas, 5.6 Calendar, 5.7 detail+podúkoly, 5.8 push: iOS registrace + backend device_tokens/APNs/scheduler. **Nutno ověřit v Xcode** – nešlo zkompilovat v CI; backend část 5.8 otestována)_
 - [x] **FÁZE 6** – Bezpečnostní audit _(6.1 OWASP Top 10 review → docs/security-report.md: 0 kritických/vysokých; 6.2 npm audit 0 zranitelností + Dependabot; 6.3 secret scan čistý + .gitleaks.toml; 6.4 docs/penetration-testing-checklist.md)_
@@ -526,6 +526,17 @@
 - **Testy/Revize**: Modály mají focus trap a vrací focus; vše ovladatelné klávesnicí; kontrast statusových barev ≥ 4.5:1; dark/light dle systému + přepínač s persistencí; termíny se zobrazují konzistentně bez chyb o ±1 den
 - **Claude Code zadání**: `Zajisti a11y: focus trap + návrat focusu u Dialogů (Shadcn/Radix to umí – ověř), viditelný focus ring, aria-label na ikon-only tlačítkách, role/aria u kanban sloupců a karet, aria-live pro toasty a stav D&D, respektuj prefers-reduced-motion. Ověř barevný kontrast statusů (≥4.5:1). Theme: ThemeProvider s light/dark/system, persistence do localStorage, respekt prefers-color-scheme, Tailwind dark: třídy. Čas: jednotně ukládej/posílej ISO 8601, zobrazuj v lokálním TZ uživatele (date-fns-tz), pozor na date-only (Due) vs datetime – žádné posuny o den kvůli UTC. Připrav i18n strukturu (i18next nebo jen centralizovaný slovník) i kdyby výchozí jazyk byl jen čeština. Mobilní web: definuj breakpointy – pokud je web desktop-first, explicitně to uveď a zajisti aspoň použitelný layout na tabletu (kanban horizontální scroll).`
 - **Technologie/nástroje**: Radix/Shadcn focus management, date-fns-tz, i18next (příprava), Tailwind dark mode
+
+---
+
+### 3.13 Todo list view _(doplněno 2026-06-11 na žádost uživatele)_
+
+- **Popis**: Čtvrtý pohled vedle Kanbanu, Timeline a Kalendáře – klasický todo list ve stylu iOS Připomínek. Checkbox = status (zaškrtnuto ⇔ Done), řazení podle termínu (bez termínu na konec), volba „Skrýt hotové", podúkoly odsazené pod rodičem, dokončené v samostatné sekci dole.
+- **Kdo**: `[Claude]`
+- **Vstup**: Task store z 3.4
+- **Výstup**: `src/views/TodoListView.tsx` (lazy load), klávesová zkratka `4`, položka v navigaci; iOS ekvivalent `Views/TodoListView.swift` (List + kroužky jako Připomínky, „Skrýt hotové" přes @AppStorage, 4. položka segmented pickeru v DashboardView)
+- **Testy/Revize**: Zaškrtnutí změní status na Done (optimisticky); „Skrýt hotové" schová dokončené, ale NIKDY neskryje hotového rodiče s nedokončeným podúkolem; řazení dle due date ověřeno testem; respektuje globální filtry (search/tagy/status)
+- **Stav**: `[x]` hotovo (web) – implementováno včetně unit testů (7) a rozšíření testu zkratek; iOS kód hotový, ale stejně jako zbytek Fáze 5 **nutno ověřit v Xcode** (v CI nelze kompilovat)
 
 ---
 

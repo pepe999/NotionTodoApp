@@ -2,7 +2,7 @@ import { useTaskStore } from '@/store/taskStore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const SHORTCUTS: ReadonlyArray<[string, string]> = [
-  ['1 / 2 / 3', 'Kanban / Časová osa / Kalendář'],
+  ['1 / 2 / 3 / 4', 'Kanban / Časová osa / Kalendář / Todo list'],
   ['N', 'Nový úkol'],
   ['?', 'Tato nápověda'],
   ['Esc', 'Zavřít okno'],

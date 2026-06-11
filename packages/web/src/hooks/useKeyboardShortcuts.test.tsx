@@ -27,6 +27,9 @@ describe('useKeyboardShortcuts', () => {
     fireEvent.keyDown(window, { key: '3' });
     expect(useTaskStore.getState().activeView).toBe('calendar');
 
+    fireEvent.keyDown(window, { key: '4' });
+    expect(useTaskStore.getState().activeView).toBe('todo');
+
     fireEvent.keyDown(window, { key: 'n' });
     expect(useTaskStore.getState().createOpen).toBe(true);
 

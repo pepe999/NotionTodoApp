@@ -13,6 +13,7 @@ struct DashboardView: View {
         case kanban = "Kanban"
         case timeline = "Časová osa"
         case calendar = "Kalendář"
+        case todo = "Todo list"
         var id: String { rawValue }
     }
 
@@ -64,6 +65,9 @@ struct DashboardView: View {
                     onOpen: { selected = $0 },
                     onCreate: { day in createDue = day; showCreate = true }
                 )
+            case .todo:
+                TodoListView(store: store, onOpen: { selected = $0 }, onCreate: { showCreate = true })
+                    .refreshable { await store.load() }
             }
         }
     }

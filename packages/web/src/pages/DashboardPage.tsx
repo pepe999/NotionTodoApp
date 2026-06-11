@@ -21,14 +21,16 @@ import { KanbanView } from '@/views/KanbanView';
 
 const TimelineView = lazy(() => import('@/views/TimelineView'));
 const CalendarView = lazy(() => import('@/views/CalendarView'));
+const TodoListView = lazy(() => import('@/views/TodoListView'));
 
 const VIEWS: ReadonlyArray<{
   id: ViewKind;
-  labelKey: 'nav.kanban' | 'nav.timeline' | 'nav.calendar';
+  labelKey: 'nav.kanban' | 'nav.timeline' | 'nav.calendar' | 'nav.todo';
 }> = [
   { id: 'kanban', labelKey: 'nav.kanban' },
   { id: 'timeline', labelKey: 'nav.timeline' },
   { id: 'calendar', labelKey: 'nav.calendar' },
+  { id: 'todo', labelKey: 'nav.todo' },
 ];
 
 function ViewFallback() {
@@ -133,6 +135,7 @@ export function DashboardPage() {
             {activeView === 'kanban' && <KanbanView />}
             {activeView === 'timeline' && <TimelineView />}
             {activeView === 'calendar' && <CalendarView />}
+            {activeView === 'todo' && <TodoListView />}
           </Suspense>
         )}
       </main>

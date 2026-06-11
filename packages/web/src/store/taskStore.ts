@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { TaskStatus } from '@notiontodoapp/shared';
 
-export type ViewKind = 'kanban' | 'timeline' | 'calendar';
+export type ViewKind = 'kanban' | 'timeline' | 'calendar' | 'todo';
 
 interface Filters {
   search: string;
@@ -33,6 +33,10 @@ interface TaskStore {
 
   helpOpen: boolean;
   setHelpOpen: (v: boolean) => void;
+
+  /** Todo list pohled: skrýt hotové úkoly (přežívá přepínání pohledů). */
+  todoHideDone: boolean;
+  setTodoHideDone: (v: boolean) => void;
 }
 
 const emptyFilters: Filters = { search: '', tags: [], status: null };
@@ -73,6 +77,9 @@ export const useTaskStore = create<TaskStore>((set) => ({
 
   helpOpen: false,
   setHelpOpen: (v) => set({ helpOpen: v }),
+
+  todoHideDone: false,
+  setTodoHideDone: (v) => set({ todoHideDone: v }),
 }));
 
 export function hasActiveFilters(f: Filters): boolean {

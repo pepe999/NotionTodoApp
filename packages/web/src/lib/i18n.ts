@@ -7,6 +7,7 @@ const cs = {
   'nav.kanban': 'Kanban',
   'nav.timeline': 'Časová osa',
   'nav.calendar': 'Kalendář',
+  'nav.todo': 'Todo list',
   'task.new': 'Nový úkol',
   'task.empty': 'Zatím žádné úkoly',
   'task.createFirst': 'Vytvořit první úkol',
