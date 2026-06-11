@@ -8,15 +8,14 @@
 # Model: SSH na server → git reset na origin/main → docker compose build & up
 #        → health check → při selhání rollback na předchozí commit.
 #
-# Aktivace: zatím MANUÁLNĚ (workflow_dispatch), protože produkční Dockerfiles,
-# produkční compose a naklonovaný /opt/apps/notion-todo-app vznikají až ve Fázi 7.
-# Až budou, znovu zapni automatické nasazení odkomentováním `push: branches: [main]`.
+# Aktivace: automaticky na push do main (zapnuto po prvním úspěšném ručním
+# nasazení 2026-06-11, run #3) + ručně přes workflow_dispatch.
 name: Deploy
 
 on:
   workflow_dispatch:
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
